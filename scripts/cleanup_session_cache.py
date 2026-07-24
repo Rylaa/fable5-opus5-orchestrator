@@ -33,7 +33,7 @@ import time
 # and with them the stop guard's ownership scoping. Files are tiny.
 SWEEP_AGE_SECONDS = 96 * 3600
 METRICS_MAX_BYTES = 5 * 1024 * 1024
-# Hard wall-clock budget for all tmux work at SessionEnd — wedged tmux
+# Hard monotonic budget for all tmux work at SessionEnd — wedged tmux
 # servers answer at the 5s subprocess timeout each, and the hook itself
 # is killed at 20s; stop early rather than mid-sweep.
 SWARM_BUDGET_SECONDS = 12
@@ -103,10 +103,28 @@ def _team_sockets():
         return []
 
 
-def _tmux(sock, *args):
+def _budget(deadline, cap=5.0):
+    """Seconds a subprocess may run without overshooting the deadline.
+
+    Checking the deadline only BETWEEN calls is not enough: a call
+    started at 11.9s of a 12s budget still runs its full 5s timeout, so
+    three wedged tmux servers push SessionEnd to ~15s against a 20s
+    hook timeout — a 1.32x margin, and unconditional, since this sweep
+    has no rate limit. Passing the remaining budget as the subprocess's
+    own timeout bounds the whole hook instead of each call.
+
+    Deadlines are monotonic: a wall clock can step backwards (NTP, a
+    manual change) and would then hand back a budget that never
+    expires, defeating the bound entirely."""
+    if deadline is None:
+        return cap
+    return max(0.2, min(cap, deadline - time.monotonic()))
+
+
+def _tmux(sock, *args, deadline=None):
     return subprocess.run(
         ["tmux", "-S", sock, *args],
-        capture_output=True, text=True, timeout=5,
+        capture_output=True, text=True, timeout=_budget(deadline),
     )
 
 
@@ -132,12 +150,12 @@ def _nearest_claude_ancestor(deadline, max_hops=12):
     the inner one ends."""
     self_pid = pid = os.getpid()
     for _ in range(max_hops):
-        if time.time() > deadline:
+        if time.monotonic() > deadline:
             return None
         try:
             out = subprocess.run(
                 ["ps", "-o", "ppid=,command=", "-p", str(pid)],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, timeout=_budget(deadline),
             ).stdout.strip()
             bits = (out.splitlines()[0] if out else "").split(None, 1)
             ppid = int(bits[0])
@@ -183,16 +201,17 @@ def reap_own_swarm(session_id, deadline):
     tag = f"@session-{str(session_id)[:8]}" if session_id else None
     killed = 0
     for sock in _team_sockets():
-        if time.time() > deadline:
+        if time.monotonic() > deadline:
             break
         is_swarm = os.path.basename(sock).startswith("claude-swarm-")
         try:
             if is_swarm and os.path.basename(sock) in own_names:
-                if _tmux(sock, "list-sessions").returncode == 0:
-                    _tmux(sock, "kill-server")
+                if _tmux(sock, "list-sessions", deadline=deadline).returncode == 0:
+                    _tmux(sock, "kill-server", deadline=deadline)
                     killed += 1
                 continue
-            r = _tmux(sock, "list-panes", "-a", "-F", "#{pane_id} #{pane_pid}")
+            r = _tmux(sock, "list-panes", "-a", "-F", "#{pane_id} #{pane_pid}",
+                      deadline=deadline)
             if r.returncode != 0:
                 continue  # dead server; the sweep unlinks swarm sockets
             pane_by_pid = {}
@@ -202,17 +221,17 @@ def reap_own_swarm(session_id, deadline):
                     pane_by_pid[bits[1]] = bits[0]
             if not pane_by_pid:
                 continue
-            if time.time() > deadline:
+            if time.monotonic() > deadline:
                 break
             ps = subprocess.run(
                 ["ps", "-o", "pid=,command=", "-p", ",".join(pane_by_pid)],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, timeout=_budget(deadline),
             )
             out = ps.stdout or ""
             if is_swarm and tag and tag in out:
-                if time.time() > deadline:
+                if time.monotonic() > deadline:
                     break
-                _tmux(sock, "kill-server")
+                _tmux(sock, "kill-server", deadline=deadline)
                 killed += 1
                 continue
             if not session_id:
@@ -226,9 +245,9 @@ def reap_own_swarm(session_id, deadline):
                     continue
                 if not _owns_pane(command, session_id):
                     continue
-                if time.time() > deadline:
+                if time.monotonic() > deadline:
                     break
-                _tmux(sock, "kill-pane", "-t", pane_by_pid[pid])
+                _tmux(sock, "kill-pane", "-t", pane_by_pid[pid], deadline=deadline)
                 killed += 1
         except Exception:
             continue
@@ -240,10 +259,11 @@ def sweep_stale_swarms(max_idle_h, deadline):
     killed = 0
     cutoff = time.time() - max_idle_h * 3600
     for sock in _swarm_sockets():
-        if time.time() > deadline:
+        if time.monotonic() > deadline:
             break
         try:
-            r = _tmux(sock, "list-windows", "-a", "-F", "#{window_activity}")
+            r = _tmux(sock, "list-windows", "-a", "-F", "#{window_activity}",
+                      deadline=deadline)
             if r.returncode != 0:
                 # Only unlink when the server is REALLY gone. A tmux
                 # binary upgrade answers with "protocol version mismatch"
@@ -260,7 +280,7 @@ def sweep_stale_swarms(max_idle_h, deadline):
                 continue
             acts = [int(x) for x in r.stdout.split() if x.isdigit()]
             if acts and max(acts) < cutoff:
-                _tmux(sock, "kill-server")
+                _tmux(sock, "kill-server", deadline=deadline)
                 killed += 1
         except Exception:
             continue
@@ -306,7 +326,7 @@ def main():
         except ValueError:
             max_idle_h = 48.0
         try:
-            deadline = time.time() + SWARM_BUDGET_SECONDS
+            deadline = time.monotonic() + SWARM_BUDGET_SECONDS
             swarm_own = reap_own_swarm(session_id, deadline)
             swarm_stale = sweep_stale_swarms(max_idle_h, deadline)
         except Exception:

@@ -125,6 +125,58 @@ def test_upward_search_stops_at_home(tmp_path):
     assert is_deny(run_hook(SCRIPT, spawn_payload(wd), env_extra={"HOME": str(home)}))
 
 
+def _write_named_ledger(root, name, body="- [ ] 1. item\n", age=None):
+    import os as _os
+    d = root / ".workflow"
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / name
+    p.write_text(body, encoding="utf-8")
+    if age is not None:
+        _os.utime(p, (age, age))
+    return p
+
+
+def test_per_task_ledger_name_satisfies_the_gate(repo_dir):
+    # Measured in the wild: 42 of 56 real ledger files carried a
+    # per-task name and were invisible to the guards. Any LEDGER*.md
+    # counts now.
+    _write_named_ledger(repo_dir, "LEDGER-blowup-onboarding.md")
+    assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
+
+
+def test_ledger_about_archives_still_counts(repo_dir):
+    # "archive" retires a ledger only as the trailing segment. A LIVE
+    # ledger whose TOPIC is archiving must not be mistaken for a
+    # retired one.
+    _write_named_ledger(repo_dir, "LEDGER-archive-migration.md")
+    assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
+
+
+def test_lowercase_ledger_name_counts(repo_dir):
+    # macOS is case-insensitive, so the old literal path matched
+    # `ledger.md`. Widening the search must not lose that.
+    _write_named_ledger(repo_dir, "ledger.md")
+    assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
+
+
+def test_archive_suffixed_ledger_does_not_satisfy_the_gate(repo_dir):
+    # Renaming to *-archive.md is the documented way to retire a ledger;
+    # an archived one must not keep the gates disarmed.
+    _write_named_ledger(repo_dir, "LEDGER-old-topic-archive.md")
+    assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
+
+
+def test_most_recent_ledger_wins(repo_dir, tmp_path):
+    # A directory can hold a stale closed LEDGER.md next to a live
+    # per-task one (seen in ad-intel-saas). The live one decides.
+    write_marker(tmp_path, time.time())
+    _write_named_ledger(repo_dir, "LEDGER.md", "- [x] 1. done\n",
+                        age=time.time() - 7200)
+    _write_named_ledger(repo_dir, "LEDGER-F4-backend.md", "- [ ] 1. open\n")
+    assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG),
+                    tmpdir=tmp_path) is None
+
+
 def test_malformed_input_never_blocks():
     assert run_hook(SCRIPT, raw="this is not json") is None
 

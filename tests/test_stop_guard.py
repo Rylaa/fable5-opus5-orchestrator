@@ -347,6 +347,220 @@ def test_future_started_still_owns(repo_dir, tmp_path):
     assert blocks(run_hook(SCRIPT, stop_payload(repo_dir), tmpdir=tmp_path))
 
 
+def _load_script(name):
+    import importlib.util
+    from conftest import SCRIPTS
+
+    spec = importlib.util.spec_from_file_location(f"_probe_{name}", SCRIPTS / name)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class _FakeClock:
+    """A monotonic clock that only advances, and a wall clock that can
+    jump backwards under it — the shape an NTP correction produces."""
+
+    def __init__(self):
+        self.mono = 1000.0
+        self.wall = 1_700_000_000.0
+
+    def monotonic(self):
+        return self.mono
+
+    def time(self):
+        return self.wall
+
+    def advance(self, seconds):
+        self.mono += seconds
+        self.wall += seconds
+
+
+def test_teammate_detection_terminates_when_the_wall_clock_jumps_back():
+    # Behavioural proof, not a source check: a wall-clock deadline stops
+    # expiring the moment the clock steps backwards, so the 12-hop walk
+    # runs to completion — inside a hook that has not emitted its
+    # decision yet. Each faked `ps` costs a simulated second and the
+    # wall clock rewinds a day on the first one.
+    mod = _load_script("ledger_guard_stop.py")
+    clock = _FakeClock()
+    calls = []
+
+    class _Result:
+        stdout = "99999 some-unrelated-process\n"
+
+    def fake_run(*args, **kwargs):
+        calls.append(kwargs.get("timeout"))
+        clock.advance(1.0)
+        if len(calls) == 1:
+            clock.wall -= 86400.0          # NTP steps the wall clock back
+        return _Result()
+
+    real_time, real_run = mod.time, mod.subprocess.run
+    try:
+        mod.time, mod.subprocess.run = clock, fake_run
+        assert mod._is_teammate_session() is False
+    finally:
+        mod.time, mod.subprocess.run = real_time, real_run
+
+    # TEAMMATE_DETECT_BUDGET is 1.5s and each hop costs 1s, so a
+    # monotonic deadline stops the walk after 2 calls. A wall-clock one
+    # would never expire and burn all 12 hops.
+    assert len(calls) <= 3, f"walk was not capped: {len(calls)} ps calls"
+    assert all(t is None or t <= 5.0 for t in calls), calls
+
+
+def test_every_deadline_is_built_from_the_monotonic_clock():
+    # Structural companion: catches a wall clock reaching a deadline
+    # through a variable (`now = time.time(); deadline = now + BUDGET`),
+    # which is exactly the shape the original bug had and which no
+    # single-line text scan can see.
+    import ast
+    from conftest import SCRIPTS
+
+    def clock_of(node):
+        """'monotonic' / 'time' / None for the clock a subtree reads."""
+        for sub in ast.walk(node):
+            if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                    and isinstance(sub.func.value, ast.Name)
+                    and sub.func.value.id == "time"):
+                return sub.func.attr
+        return None
+
+    def clocks_read_in(node):
+        return {sub.func.attr for sub in ast.walk(node)
+                if isinstance(sub, ast.Call)
+                and isinstance(sub.func, ast.Attribute)
+                and isinstance(sub.func.value, ast.Name)
+                and sub.func.value.id == "time"}
+
+    for name in ("ledger_guard_stop.py", "cleanup_session_cache.py"):
+        tree = ast.parse((SCRIPTS / name).read_text(encoding="utf-8"))
+        # _budget subtracts *from* a monotonic deadline, so it must read
+        # the same clock. Reading the wall clock there does not merely
+        # fail to bound — it collapses every budget to the 0.2s floor
+        # and starves healthy subprocess calls.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "_budget":
+                assert clocks_read_in(node) == {"monotonic"}, (
+                    f"{name}:{node.lineno} _budget reads "
+                    f"{clocks_read_in(node)}, must read only monotonic")
+        # Every local name that was assigned straight from a clock call.
+        # Both plain and annotated assignments count: `deadline: float =
+        # time.time() + N` is the same bug wearing a type hint.
+        def bindings(t):
+            for node in ast.walk(t):
+                if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                        and isinstance(node.targets[0], ast.Name):
+                    yield node, node.targets[0].id, node.value
+                elif isinstance(node, ast.AnnAssign) \
+                        and isinstance(node.target, ast.Name) \
+                        and node.value is not None:
+                    yield node, node.target.id, node.value
+
+        from_clock = {}
+        for _node, target, value in bindings(tree):
+            src = clock_of(value)
+            if src:
+                from_clock[target] = src
+        for node, target, value in bindings(tree):
+            if "deadline" not in target.lower():
+                continue
+            # A `deadline = None` sentinel disables budgeting on purpose;
+            # only arithmetic on a clock is under review here.
+            if isinstance(value, ast.Constant) and value.value is None:
+                continue
+            direct = clock_of(value)
+            if direct is None:  # built from a variable — follow it one hop
+                names = {n.id for n in ast.walk(value)
+                         if isinstance(n, ast.Name)}
+                sources = {from_clock[n] for n in names if n in from_clock}
+                assert sources and sources <= {"monotonic"}, (
+                    f"{name}:{node.lineno} deadline built from a wall clock "
+                    f"via {names & set(from_clock)}")
+            else:
+                assert direct == "monotonic", (
+                    f"{name}:{node.lineno} deadline built from time.{direct}()")
+
+    # Functional floor: an already-expired deadline yields the floor,
+    # never a large budget.
+    for name in ("ledger_guard_stop.py", "cleanup_session_cache.py"):
+        mod = _load_script(name)
+        assert mod._budget(time.monotonic() - 5.0) == 0.2, name
+        assert mod._budget(None) == 5.0, name
+
+
+def test_slow_ps_cannot_swallow_the_decision(repo_dir, tmp_path):
+    # Teammate detection runs BEFORE the guard prints anything, so its
+    # cost is charged against the 10s hook timeout with nothing emitted
+    # yet. A `ps` that is slow but ANSWERS is the dangerous shape: each
+    # hop succeeds, so the per-call timeout never trips and the walk
+    # runs all 12 hops. At 1s a hop that is 12s — the hook is killed
+    # with no decision at all. The detection budget caps the whole walk.
+    write_ledger(repo_dir, "- [ ] 1. open\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ps = bin_dir / "ps"
+    # Answers every time (never a claude ancestor, so the walk continues)
+    # but takes a second per hop.
+    ps.write_text("#!/bin/sh\nsleep 1\necho '99999 some-unrelated-process'\n",
+                  encoding="utf-8")
+    os.chmod(ps, 0o755)
+    env = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+    started = time.time()
+    result = run_hook(SCRIPT, stop_payload(repo_dir), env_extra=env, tmpdir=tmp_path)
+    elapsed = time.time() - started
+    assert blocks(result), "decision must still be emitted"
+    assert elapsed < 5, f"took {elapsed:.1f}s — the 12-hop walk was not capped"
+
+
+def test_per_task_ledger_name_holds_the_close(repo_dir, tmp_path):
+    # The close guard must see per-task ledger names too, or every
+    # session that names its ledger LEDGER-<topic>.md closes unchecked.
+    d = repo_dir / ".workflow"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "LEDGER-tiktok-sdk-e2e.md").write_text(
+        "- [ ] 1. open\n", encoding="utf-8")
+    result = run_hook(SCRIPT, stop_payload(repo_dir), tmpdir=tmp_path)
+    assert blocks(result)
+    assert "LEDGER-tiktok-sdk-e2e.md" in result["reason"]
+
+
+def test_unreadable_ledger_does_not_mask_a_live_sibling(repo_dir, tmp_path):
+    # A newer but unreadable file would win the mtime race, then fail to
+    # open — and the guard would return silently, hiding the live ledger
+    # whose open items should have held the close.
+    import pytest
+
+    if os.geteuid() == 0:
+        pytest.skip("root ignores file permissions")
+    d = repo_dir / ".workflow"
+    d.mkdir(parents=True, exist_ok=True)
+    live = d / "LEDGER.md"
+    live.write_text("- [ ] 1. live work\n", encoding="utf-8")
+    old = time.time() - 3600
+    os.utime(live, (old, old))
+    locked = d / "LEDGER-locked.md"
+    locked.write_text("- [ ] 1. unreadable\n", encoding="utf-8")
+    os.chmod(locked, 0o000)
+    try:
+        result = run_hook(SCRIPT, stop_payload(repo_dir), tmpdir=tmp_path)
+        assert blocks(result), "the live ledger must still hold the close"
+        assert "LEDGER.md" in result["reason"]
+    finally:
+        os.chmod(locked, 0o644)
+
+
+def test_archived_ledger_stays_silent(repo_dir, tmp_path):
+    # The block message tells the model to archive a ledger to silence
+    # it for good; that promise must hold.
+    d = repo_dir / ".workflow"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "LEDGER-done-work-archive.md").write_text(
+        "- [ ] 1. never finished\n", encoding="utf-8")
+    assert run_hook(SCRIPT, stop_payload(repo_dir), tmpdir=tmp_path) is None
+
+
 def test_teammate_close_is_never_held(repo_dir, tmp_path):
     # The ledger belongs to the chair. Holding a teammate's close on it
     # costs the teammate a turn and can eat the report it was about to

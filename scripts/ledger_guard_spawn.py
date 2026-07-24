@@ -2,8 +2,9 @@
 """PreToolUse guard (Agent|Task|Workflow|TaskCreate): keep multi-phase work on the ledger.
 
 Dynamic Workflow Rule 1: serious multi-phase delegation requires
-a Requirements Ledger at .workflow/LEDGER.md (searched from the
-working directory up to the repo root or $HOME). Short spawn
+a Requirements Ledger in .workflow/ — any LEDGER*.md there, most
+recent wins, *-archive.md excluded (searched from the working
+directory up to the repo root or $HOME). Short spawn
 prompts (quick searches/lookups) pass freely so casual Explore
 agents are never blocked.
 
@@ -196,8 +197,8 @@ def guard_task_create(data):
             "permissionDecision": "deny",
             "permissionDecisionReason": (
                 f"LEDGER GUARD: this is tracker task #{count} this session — "
-                "multi-phase work — but no active .workflow/LEDGER.md exists "
-                f"from the working directory up to the repo root{stale_note}. "
+                "multi-phase work — but no active ledger exists in any "
+                f".workflow/ from the working directory up to the repo root{stale_note}. "
                 "Rule 0's hard cap: work that needs a task list of 3+ items is "
                 "OVER the orchestration threshold, and an approved plan is NOT "
                 "an exemption. Write the numbered Requirements Ledger to "
@@ -210,8 +211,54 @@ def guard_task_create(data):
     }))
 
 
+def active_ledger_in(dirpath):
+    """The live ledger in dirpath/.workflow, or None.
+
+    Any `LEDGER*.md` counts, not just the bare name: measured in the
+    wild, 42 of 56 real ledger files carried a per-task name like
+    `LEDGER-<topic>.md`, and every one of them was invisible to these
+    guards. A name ENDING in `-archive.md` (or `_archive.md`) is
+    retired and excluded — that rename is the documented way to put a
+    ledger to rest, and the deny messages below ask for exactly it.
+    The suffix has to be trailing: `LEDGER-archive-migration.md` is a
+    live ledger whose topic happens to be archives, and it counts.
+    Matching is case-insensitive. When several are live the most
+    recently modified readable one wins: that is the one this session
+    is working in.
+    """
+    workflow = os.path.join(dirpath, ".workflow")
+    try:
+        names = os.listdir(workflow)
+    except OSError:
+        return None
+    best, best_mtime = None, -1.0
+    for name in names:
+        low = name.lower()
+        if not (low.startswith("ledger") and low.endswith(".md")):
+            continue
+        # Retired only when "archive" is the trailing segment, the form
+        # this hook's own message asks for. A live ledger ABOUT archives
+        # (LEDGER-archive-migration.md) must still count.
+        if low.endswith("-archive.md") or low.endswith("_archive.md"):
+            continue
+        path = os.path.join(workflow, name)
+        try:
+            if not os.path.isfile(path):
+                continue
+            # An unreadable file must not mask a live sibling by being
+            # newer — the guards could not read it anyway.
+            if not os.access(path, os.R_OK):
+                continue
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue
+        if mtime > best_mtime:
+            best, best_mtime = path, mtime
+    return best
+
+
 def find_ledger(start_dir):
-    """Path of .workflow/LEDGER.md from start_dir up to the repo root or $HOME.
+    """Path of the live .workflow/ ledger from start_dir up to the repo root or $HOME.
 
     Walks parent directories so sessions running in a subdirectory
     still see the project ledger. Stops at the first directory that
@@ -226,8 +273,8 @@ def find_ledger(start_dir):
     d = os.path.realpath(start_dir)
     home = os.path.realpath(os.path.expanduser("~"))
     while True:
-        candidate = os.path.join(d, ".workflow", "LEDGER.md")
-        if os.path.isfile(candidate):
+        candidate = active_ledger_in(d)
+        if candidate:
             return candidate
         if os.path.exists(os.path.join(d, ".git")) or d == home:
             return None
@@ -327,8 +374,8 @@ def _guard(data):
             "permissionDecision": "deny",
             "permissionDecisionReason": (
                 f"LEDGER GUARD: this looks like a detailed delegation "
-                f"({what} > {limit} chars) but no active .workflow/LEDGER.md "
-                f"exists from the working directory up to the repo root"
+                f"({what} > {limit} chars) but no active ledger exists in "
+                f"any .workflow/ from the working directory up to the repo root"
                 f"{stale_note}. Per Dynamic Workflow Rule 1, first write the "
                 "numbered Requirements Ledger to ./.workflow/LEDGER.md "
                 "(checkbox format: '- [ ] N. <item>'), then re-spawn citing "

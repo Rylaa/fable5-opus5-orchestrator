@@ -47,7 +47,8 @@ Fable thinks. Sonnet does. Fable checks the close. Your limit pays for the think
 │ Source briefs, filtering, code review   │ Sonnet 5 max    │ nothing             │
 │ Bulk gathering (fetch, grep, scan)      │ Sonnet 5 max    │ nothing             │
 │ Fresh-eyes verification (the close)     │ Fable 5 max     │ one call per close  │
-│ Escalations (hard judgment, security)   │ Opus → Fable    │ mostly nothing      │
+│ Escalations (hard judgment)             │ Opus → Fable    │ mostly nothing      │
+│ Security / adversarial review           │ Opus (not Fable)│ nothing             │
 └─────────────────────────────────────────┴─────────────────┴─────────────────────┘
 ```
 
@@ -85,7 +86,7 @@ Detection runs at each session start, in priority order: an explicit `FABLE_ORCH
 
 ### 2 · A Requirements Ledger
 
-Before serious delegation the chair writes every requirement, constraint, and edge case as one checkbox line in `./.workflow/LEDGER.md`. Files survive context compaction; conversation context does not.
+Before serious delegation the chair writes every requirement, constraint, and edge case as one checkbox line in `./.workflow/LEDGER.md` — or `LEDGER-<topic>.md` beside it when one project runs several. The hooks watch every `LEDGER*.md` in that directory, newest first; a name *ending* in `-archive.md` is retired and silences the close guard for good, so a live `LEDGER-archive-migration.md` still counts. Files survive context compaction; conversation context does not.
 
 ```markdown
 - [ ] 1. Every explicit requirement, one line each
@@ -148,7 +149,7 @@ turn ends
        good; LEDGER_GUARD_STOP_MODE=every-turn restores per-turn blocking.
 ```
 
-A fourth hook (`SessionEnd`) cleans up after the session: its temp files and **its tmux teammates**. The agent-teams backend parks teammates in tmux panes and never reaps them (measured in the wild: 63 orphaned agents holding ~5 GB; later, 9 panes parked for 11-30 hours) — on current Claude Code those panes sit inside **your own default tmux server**, on older versions in dedicated `claude-swarm-*` servers. The hook kills the session's own teammates wherever they live: the legacy `claude-swarm-<pid>` server whole (matched via the hook's nearest-claude ancestor or the `@session-<id>` pane tag), and on shared servers only the PANES carrying this session's `--parent-session-id` — a non-swarm server itself is never killed. Swarm servers idle 48h+ are swept too. Finished teammates don't wait for a SessionEnd that may be days away: a rate-limited sweep piggybacked on the Stop hook samples every teammate pane's CPU and kills panes idling below ~1% CPU for `FABLE_ORCH_TEAMMATE_IDLE_H` hours (default 1). A parked teammate still burns a mailbox-polling heartbeat, so idleness is a sustained low RATE, not a frozen clock — working siblings re-baseline and survive. The injected profile adds the front line: the chair dismisses a teammate (`shutdown_request`) the moment its report is accepted.
+A fourth hook (`SessionEnd`) cleans up after the session: its temp files and **its tmux teammates**. The agent-teams backend parks teammates in tmux panes and never reaps them (measured in the wild: 63 orphaned agents holding ~5 GB; later, 9 panes parked for 11-30 hours) — on current Claude Code those panes sit inside **your own default tmux server**, on older versions in dedicated `claude-swarm-*` servers. The hook kills the session's own teammates wherever they live: the legacy `claude-swarm-<pid>` server whole (matched via the hook's nearest-claude ancestor or the `@session-<id>` pane tag), and on shared servers only the PANES carrying this session's `--parent-session-id` — a non-swarm server itself is never killed. Swarm servers idle 48h+ are swept too. Finished teammates don't wait for a SessionEnd that may be days away: a rate-limited sweep piggybacked on the Stop hook samples every teammate pane's CPU and kills panes idling below ~1% CPU for `FABLE_ORCH_TEAMMATE_IDLE_H` hours (default 1). A parked teammate still burns a mailbox-polling heartbeat, so idleness is a sustained low RATE, not a frozen clock — working siblings re-baseline and survive. The injected profile adds the front line: the chair dismisses a teammate (`shutdown_request`) the moment its final report is accepted.
 
 ## Watching the team live
 
