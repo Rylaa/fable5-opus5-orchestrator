@@ -347,6 +347,89 @@ def test_future_started_still_owns(repo_dir, tmp_path):
     assert blocks(run_hook(SCRIPT, stop_payload(repo_dir), tmpdir=tmp_path))
 
 
+def test_teammate_close_is_never_held(repo_dir, tmp_path):
+    # The ledger belongs to the chair. Holding a teammate's close on it
+    # costs the teammate a turn and can eat the report it was about to
+    # deliver — observed in the wild. Fake ps puts an --agent-id claude
+    # in the ancestor chain.
+    write_ledger(repo_dir, "- [ ] 1. open\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ps = bin_dir / "ps"
+    ps.write_text(
+        "#!/usr/bin/env python3\n"
+        "print('1 claude --agent-id worker@session-t --agent-name worker')\n",
+        encoding="utf-8",
+    )
+    os.chmod(ps, 0o755)
+    env = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+    assert run_hook(SCRIPT, stop_payload(repo_dir), env_extra=env, tmpdir=tmp_path) is None
+    # The escape hatch restores the old behaviour.
+    env["FABLE_ORCH_TEAMMATE_STOP"] = "1"
+    assert blocks(run_hook(SCRIPT, stop_payload(repo_dir), env_extra=env, tmpdir=tmp_path))
+
+
+def test_chair_close_still_held_when_ancestors_are_not_agents(repo_dir, tmp_path):
+    # Same fake ps, but the ancestor carries no --agent-id: this is the
+    # chair, and its open ledger must still hold the close.
+    write_ledger(repo_dir, "- [ ] 1. open\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ps = bin_dir / "ps"
+    ps.write_text(
+        "#!/usr/bin/env python3\nprint('1 claude')\n", encoding="utf-8")
+    os.chmod(ps, 0o755)
+    env = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+    assert blocks(run_hook(SCRIPT, stop_payload(repo_dir), env_extra=env, tmpdir=tmp_path))
+
+
+def test_symlinked_cwd_finds_the_real_ledger(tmp_path):
+    # The spawn guard resolves symlinks (realpath); the stop guard must
+    # too, or the two disagree about whether the session has a ledger and
+    # an open ledger reached through a symlinked cwd never holds a close.
+    real = tmp_path / "real"
+    (real / ".git").mkdir(parents=True)
+    (real / "sub").mkdir()
+    write_ledger(real, "- [ ] 1. open\n")
+    link = tmp_path / "link"
+    os.symlink(real / "sub", link)
+    assert blocks(run_hook(SCRIPT, stop_payload(link), tmpdir=tmp_path))
+
+
+def test_marker_touch_does_not_disown_a_started_less_marker(repo_dir, tmp_path):
+    # The warmth touch must land AFTER the ownership check. A marker with
+    # no `started` (legacy or corrupt) falls back to its own mtime; if the
+    # touch ran first it would reset that to "now" and silently disown
+    # every ledger the session had already worked on.
+    ledger = write_ledger(repo_dir, "- [ ] 1. open\n")
+    cache = tmp_path / "fable-orch-model-test-session.json"
+    cache.write_text(json.dumps({"model": "fable"}), encoding="utf-8")
+    started = time.time() - 3600          # session began an hour ago
+    os.utime(cache, (started, started))
+    mid = time.time() - 1800              # ledger touched mid-session
+    os.utime(ledger, (mid, mid))
+    assert blocks(run_hook(SCRIPT, stop_payload(repo_dir), tmpdir=tmp_path))
+    assert os.path.getmtime(cache) > time.time() - 300  # still warmed
+
+
+def test_stop_warms_every_session_sidecar(repo_dir, tmp_path):
+    # Warming only the marker let the 96h sweep reap the stop and tasks
+    # sidecars — resetting the task counter and re-blocking a ledger that
+    # had already had its one reminder.
+    old = time.time() - 7200
+    paths = []
+    for name, body in (("fable-orch-model-test-session.json", '{"started": 1.0}'),
+                       ("fable-orch-stop-test-session.json", '{"blocked": {}}'),
+                       ("fable-orch-tasks-test-session.json", '{"count": 2}')):
+        p = tmp_path / name
+        p.write_text(body, encoding="utf-8")
+        os.utime(p, (old, old))
+        paths.append(p)
+    run_hook(SCRIPT, stop_payload(repo_dir), tmpdir=tmp_path)
+    for p in paths:
+        assert os.path.getmtime(p) > time.time() - 300, p.name
+
+
 def test_stop_touches_the_session_marker(repo_dir, tmp_path):
     # Every Stop refreshes the marker's mtime so the 96h temp sweep can
     # never eat a LIVE session's files; `started` content is untouched.

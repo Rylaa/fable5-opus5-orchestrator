@@ -6,7 +6,7 @@
 
 Fable 5 is the best chair a Claude Code session can have — and the most expensive seat in the house. Let it type every token itself and the session ends rate-limited, waiting out the reset window.
 
-This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends tokens only on planning, arbitration, and final decisions. Everything else — implementation, research, briefs, review, bulk reading — goes to **Sonnet 5**. **Opus 4.8** stays on the roster as the escalation lane (security reviews pinned there), and the close gets its fresh-eyes verification from **Fable 5** itself — one bounded call per workflow.
+This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends tokens only on planning, arbitration, and final decisions. Everything else — implementation, research, briefs, review, bulk reading — goes to **Sonnet 5**. **Opus 5** stays on the roster as the escalation lane (security reviews pinned there), and the close gets its fresh-eyes verification from **Fable 5** itself — one bounded call per workflow.
 
 ## The division of labor
 
@@ -31,7 +31,7 @@ This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends t
                                                             ┌──────────▼──────────┐
                                                             │      the valve      │
                                                             │  verify: FABLE 5    │
-                                                            │  escalate: OPUS 4.8 │
+                                                            │  escalate: OPUS 5   │
                                                             │  (→ fable ceiling)  │
                                                             └─────────────────────┘
 ```
@@ -55,7 +55,7 @@ Fable thinks. Sonnet does. Fable checks the close. Your limit pays for the think
 
 - **Fable tokens are the heaviest draw on your limit.** Every token of bulk work kept off the chair extends how long Fable stays in it.
 - **Sonnet 5 closed the gap.** Near-Opus quality on coding and agentic work, with the full effort ladder (`low` → `xhigh` → `max`). At `max` it carries the routine judgment — briefs, filtering, standard review — that used to need an Opus call.
-- **The valve is two-tier.** Fresh-eyes verification of the close runs on Fable 5 — the strongest model at the single highest-stakes moment, once per close. Escalations climb sonnet → opus → fable, with security reviews pinned to Opus (Fable's safety classifiers can refuse even benign security work). A worker that returns "uncertain" never bounces back to the chair.
+- **The valve is two-tier.** Fresh-eyes verification of the close runs on Fable 5 — the strongest model at the single highest-stakes moment, once per close. Escalations climb sonnet → opus → fable, with security reviews kept off Fable, whose classifiers decline benign security work most readily. Any tier can still decline it — the profile's rule is to rerun the refused task unchanged on another tier and, if that tier declines too, stop and tell you, never to reword the request past a classifier. A worker that returns "uncertain" never bounces back to the chair.
 
 ## What the plugin does
 
@@ -79,7 +79,7 @@ A SessionStart hook injects the Fable-in-chair profile ([`instructions/dynamic-w
 
 The profile routes subagents by tier name (`sonnet`, `opus`, `fable`), keeps bulk material on disk (`./.workflow/scratch/` — the chair receives briefs and verdicts, never dumps), and runs every delegated agent at `max` effort — savings come from the tier, never from dialing effort down. Context-heavy follow-ups go to a **fork** (`subagent_type: "fork"`), which inherits the full conversation with no spec-writing tax.
 
-**When the Fable limit runs dry**, move the chair to Opus 4.8 (`/model`): the injector serves the matching OPUS profile ([`instructions/dynamic-workflow-opus.md`](instructions/dynamic-workflow-opus.md)) — same discipline, the fable tier rests, fresh-eyes verification and the escalation ceiling fall to a fresh Opus agent. Opus is a drop-in chair: it orchestrates exactly as Fable did, only Opus now sits in the seat.
+**When the Fable limit runs dry**, move the chair to Opus (`/model`): the injector serves the matching OPUS profile ([`instructions/dynamic-workflow-opus.md`](instructions/dynamic-workflow-opus.md)) — same discipline, the fable tier rests, fresh-eyes verification and the escalation ceiling fall to a fresh Opus agent. Opus is a drop-in chair: it orchestrates exactly as Fable did, only Opus now sits in the seat.
 
 Detection runs at each session start, in priority order: an explicit `FABLE_ORCH_PROFILE=fable|opus` pin, then the SessionStart payload's model, then **the default model `/model` wrote to `settings.json`** (so an Opus default is honored even when the harness omits the payload model on a resume/compact — the case that used to fall back to Fable), then the last model this session saw. A mid-session `/model` switch still only takes effect at the next session start (SessionStart is the only injection point) — but the settings fallback makes that next start reliable. To pin the chair regardless of detection, set `FABLE_ORCH_PROFILE=opus` while you ride out the Fable limit, `fable` (or unset) when it resets.
 
@@ -131,7 +131,7 @@ TaskCreate (tracker task)
                                                      phases to workers" — then quiet
 ```
 
-**Close guard** (`Stop`):
+**Close guard** (`Stop`) — chair only; a named teammate's close is never held on the chair's ledger (`FABLE_ORCH_TEAMMATE_STOP=1` restores the old behaviour):
 
 ```
 turn ends
@@ -226,6 +226,7 @@ Set these in `~/.claude/settings.json` under `"env"`.
 ├───────────────────────────────┼────────────────────┼────────────────────────────────────────────┤
 │ LEDGER_GUARD_THRESHOLD        │ 1500               │ spawn-guard gate (chars)                   │
 │ FABLE_ORCH_PROFILE            │ auto               │ pin the chair profile: auto | fable | opus │
+│ FABLE_ORCH_TEAMMATE_STOP      │ (off)              │ 1 lets the close guard hold teammates too  │
 │ LEDGER_GUARD_TASKS            │ 3                  │ 3rd ledgerless tracker task denied; 0 off  │
 │ LEDGER_GUARD_STOP_MODE        │ once-per-session   │ every-turn restores per-turn blocking      │
 │ FABLE_ORCH_METRICS            │ (on)               │ 0 disables local metrics logging           │

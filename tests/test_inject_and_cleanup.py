@@ -49,18 +49,62 @@ def test_non_opus_models_get_the_fable_profile(tmp_path):
 
 
 def test_opus_chair_gets_the_opus_fallback_profile(tmp_path):
-    # The Fable limit ran dry and the chair restarted on Opus 4.8: the
+    # The Fable limit ran dry and the chair restarted on Opus: the
     # matching profile keeps the same discipline with the fable tier
     # resting.
     result = run_hook(
         INJECT,
-        {"model": "claude-opus-4-8", "session_id": "s-opus"},
+        {"model": "claude-opus-5", "session_id": "s-opus"},
         env_extra={"CLAUDE_PLUGIN_ROOT": str(REPO)},
         tmpdir=tmp_path,
     )
     text = context_of(result)
     assert "(OPUS profile)" in text
     assert "(FABLE profile)" not in text
+
+
+def test_every_opus_generation_and_spelling_detects(tmp_path):
+    # Detection matches the tier name, not a dated ID, so it must survive
+    # every new Opus release and every spelling the harness or
+    # settings.json can hand it — display name, 1M-context suffix, and a
+    # version glued straight onto the tier name.
+    for model in ("claude-opus-5", "claude-opus-5[1m]", "opus[1m]",
+                  "Opus 5 (1M context)", "claude-opus-4-8", "OPUS-5",
+                  "claude-opus5", "opus6", "claude-opus-5.1"):
+        result = run_hook(
+            INJECT,
+            {"model": model, "session_id": "s-gen"},
+            env_extra={"CLAUDE_PLUGIN_ROOT": str(REPO)},
+            tmpdir=tmp_path,
+        )
+        assert "(OPUS profile)" in context_of(result), model
+
+
+def test_opus_lookalike_models_are_not_opus(tmp_path):
+    # The match is word-boundary anchored: a model whose name merely
+    # contains the letters "opus" is not an Opus chair.
+    for model in ("claude-octopus-1", "opusculum-7", "myopus"):
+        result = run_hook(
+            INJECT,
+            {"model": model, "session_id": "s-look"},
+            env_extra={"CLAUDE_PLUGIN_ROOT": str(REPO)},
+            tmpdir=tmp_path,
+        )
+        assert "(FABLE profile)" in context_of(result), model
+
+
+def test_profiles_name_no_dated_opus_id():
+    # The profiles teach "never a dated ID"; they must follow their own
+    # rule, or they go stale on every release (they said "Opus 4.8"
+    # while an Opus 5 chair was reading them). Matches any dotted or
+    # dashed version glued to a tier name, not just the one that bit us.
+    import re as _re
+
+    dated = _re.compile(r"\b(opus|sonnet|fable|haiku)[ -]?\d+[.-]\d+",
+                        _re.IGNORECASE)
+    for name in ("dynamic-workflow-fable.md", "dynamic-workflow-opus.md"):
+        text = (REPO / "instructions" / name).read_text(encoding="utf-8")
+        assert not dated.search(text), f"{name}: {dated.search(text).group(0)}"
 
 
 # --- chair detection chain: override > payload > settings > marker > fable ---

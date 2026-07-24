@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SessionStart hook: inject the Dynamic Workflow instructions.
 
-This plugin is built for a Claude Fable 5 chair, with an Opus 4.8
+This plugin is built for a Claude Fable 5 chair, with an Opus
 fallback: when the Fable limit is spent and the user moves the chair to
 Opus, the OPUS profile keeps the same discipline (the fable tier rests,
 verification and the escalation ceiling fall to opus). The chair is
@@ -37,6 +37,7 @@ ledger mtimes against it to decide ownership.
 """
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -68,7 +69,16 @@ def _metric(event, session_id=None, **extra):
 
 
 def _is_opus(value):
-    return "opus" in str(value or "").lower()
+    """True when the model string names the opus tier.
+
+    Bounded, not a bare substring: `claude-octopus-1` and `opusculum`
+    contain "opus" but are not Opus chairs. The bound stays permissive
+    on the right so a version can follow with or without a separator —
+    `claude-opus-5`, `opus5`, `opus[1m]`, `Opus 5 (1M context)` all
+    match; only a letter immediately after "opus" disqualifies it.
+    """
+    return re.search(r"\bopus(?![a-z])", str(value or ""),
+                     re.IGNORECASE) is not None
 
 
 def _configured_model():

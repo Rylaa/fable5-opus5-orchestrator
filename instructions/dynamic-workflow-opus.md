@@ -1,7 +1,7 @@
 # Dynamic Workflow — Orchestration & Model Routing (OPUS profile)
 
 > **Opus-in-chair (Fable-limit fallback).** The Fable 5 limit is
-> spent; Opus 4.8 holds the chair until it returns. Same discipline,
+> spent; Opus holds the chair until it returns. Same discipline,
 > one substitution: everything the fable tier did falls to opus —
 > do NOT spawn fable agents while this profile is active, they burn
 > the exhausted limit. The scarce resource is still the USAGE
@@ -15,9 +15,10 @@ may be used liberally.
 
 ## Tiers & effort
 
-Pick subagent models by TIER NAME — `sonnet`, `opus` — never by
-dated ID (today: Sonnet 5, Opus 4.8; the haiku tier is retired —
-use sonnet). The fable tier is RESTING: its roles (fresh-eyes
+Pick subagent models by TIER NAME — `sonnet`, `opus` — never a
+dated ID: a tier resolves to its current model (Sonnet 5, Opus 5
+today). Never use haiku; its work goes to sonnet.
+The fable tier is RESTING: its roles (fresh-eyes
 verification, escalation ceiling) fall to opus while this profile
 is active. Effort is NOT a savings knob: EVERY delegated agent —
 implementation, judgment, verification, escalation, and mechanical
@@ -110,7 +111,9 @@ top of the ladder: sonnet returned "uncertain"; predictably hard
 judgment (architecture tradeoffs, irreversible migrations, debugging
 that resisted a sonnet pass); ALL security/adversarial review; and
 the fresh-eyes verification of every close. Routine judgment still
-never lands here — sonnet carries the volume.
+never lands here — sonnet carries the volume. Any tier can decline
+security work: rerun it unchanged on sonnet; if sonnet declines
+too, STOP and tell the user. Never reword to get past a classifier.
 
 **you** — phase planning, final arbitration, synthesis that decides
 the answer, and anything hinging on conversation context only you
@@ -125,20 +128,20 @@ Instruct deep, exhaustive reasoning wherever a decision is made.
 
 `subagent_type: "fork"` clones your FULL conversation; its tool
 churn stays out of your window and only the final result returns.
-Use it for bounded, context-heavy follow-ups.
-A fork runs on YOUR model and spends the usage limit: at most 2
-forks per session, and forking the phases of a plan is disguised
-solo work — phases go to sonnet workers with specs.
+Use it for bounded, context-heavy follow-ups. A fork runs on YOUR
+model and spends the usage limit: at most 2 per session, and
+forking a plan's phases is disguised solo work — phases go to
+sonnet workers with specs.
 
 ## Teammate lifecycle — dismiss when done
 
 Named teammates park as tmux panes until dismissed. Once a
-teammate's final report is ACCEPTED with no follow-up planned,
-dismiss it: SendMessage `{"type": "shutdown_request"}` — never
-leave finished teammates stacked. Dismissal is final (no resume):
-dismiss only after processing the output. The plugin reaps what
-you forget: session close kills your team's panes; a
-sustained-low-CPU pane dies after ~1h.
+teammate's report is ACCEPTED with no follow-up planned, dismiss
+it: SendMessage `{"type": "shutdown_request"}` — never leave
+finished teammates stacked. Dismissal is final, so dismiss only
+after processing the output. The plugin reaps what you forget:
+session close kills your team's panes; a sustained-low-CPU pane
+dies after ~1h.
 
 ## Research pipeline — parallel fan-out, no mid-flight dumps
 
@@ -178,9 +181,8 @@ cycles, then STOP and report the open items to the user.
 
 ## Your context hygiene
 
-Consume briefs + verbatim evidence; bulk lives on disk (Rule 2). But
-when a decision hinges on exact content and it is short, read it
+Consume briefs + verbatim evidence; bulk lives on disk (Rule 2).
+But when a decision hinges on exact content that is short, read it
 yourself — never decide on a summary when the source fits in a few
-hundred lines. Keep outputs minimal (plans, ledger updates,
-verdicts); parallelize independent calls; drop closed-phase raw
-material.
+hundred lines. Keep outputs minimal; parallelize independent calls;
+drop closed-phase raw material.

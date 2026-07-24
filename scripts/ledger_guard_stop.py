@@ -74,10 +74,14 @@ def find_ledger(start_dir):
     Stops at the first directory that contains .git (checked with
     os.path.exists, not isdir — in worktrees and submodules .git is a
     FILE), at the home directory (a ledger above $HOME belongs to
-    nobody), or at the filesystem root.
+    nobody), or at the filesystem root. realpath, not abspath — it must
+    resolve symlinks exactly as the spawn guard does, or the two guards
+    disagree about whether a session has a ledger at all.
     """
-    d = os.path.abspath(start_dir or os.getcwd())
-    home = os.path.abspath(os.path.expanduser("~"))
+    if not isinstance(start_dir, str) or not start_dir:
+        start_dir = os.getcwd()
+    d = os.path.realpath(start_dir)
+    home = os.path.realpath(os.path.expanduser("~"))
     while True:
         candidate = os.path.join(d, ".workflow", "LEDGER.md")
         if os.path.isfile(candidate):
@@ -361,6 +365,11 @@ def main():
             sys.stdout.flush()
         except Exception:
             pass
+        # Only now — the ownership check above reads the marker's mtime.
+        try:
+            touch_session_files((data or {}).get("session_id"))
+        except Exception:
+            pass
         try:
             reap_idle_teammates((data or {}).get("session_id"))
         except Exception:
@@ -379,20 +388,70 @@ def _outside_fences(text):
     return "\n".join(kept)
 
 
-def run_guard(data):
-    # Keep the session marker warm: the 96h temp sweep must never eat a
-    # LIVE session's marker/sidecars just because SessionStart hasn't
-    # re-fired in days. Content (the immutable `started`) is untouched.
-    cache = session_model_cache_path(data.get("session_id"))
-    if cache and os.path.isfile(cache):
-        try:
-            os.utime(cache, None)
-        except OSError:
-            pass
+def _is_teammate_session(max_hops=12):
+    """True when this hook is running inside a named teammate.
 
+    Teammates are launched with `--agent-id`. The ledger belongs to the
+    CHAIR: holding a teammate's close on the chair's open items is pure
+    noise — it costs the teammate a turn and can eat the very report it
+    was about to deliver (observed in the wild). Walks up to the first
+    claude ancestor and answers from its argv, so the chair pays only a
+    couple of `ps` calls.
+    """
+    pid = os.getpid()
+    for _ in range(max_hops):
+        try:
+            out = subprocess.run(
+                ["ps", "-o", "ppid=,command=", "-p", str(pid)],
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+            bits = (out.splitlines()[0] if out else "").split(None, 1)
+            ppid = int(bits[0])
+        except Exception:
+            return False
+        command = bits[1] if len(bits) > 1 else ""
+        for tok in command.split():
+            base = os.path.basename(tok.strip("\"'"))
+            if base == "claude" or "claude-code" in tok or base.startswith("2."):
+                return "--agent-id" in command
+        if ppid <= 1:
+            return False
+        pid = ppid
+    return False
+
+
+def touch_session_files(session_id):
+    """Keep this session's temp files warm so the 96h sweep never eats a
+    LIVE session's state just because SessionStart hasn't re-fired in
+    days. Content is untouched — only mtime moves.
+
+    Called AFTER the guard decision, never before: owned_by_session
+    falls back to the marker's mtime when the marker carries no
+    `started` (legacy or corrupt), so touching first would reset that
+    fallback to "now" and silently disown every ledger. All three files
+    are warmed — warming only the marker let the sweep reap the stop and
+    tasks sidecars, resetting the task counter and re-blocking a ledger
+    that had already had its one reminder.
+    """
+    for prefix in ("fable-orch-model", "fable-orch-stop", "fable-orch-tasks"):
+        path = _tmp_json(prefix, session_id)
+        if path and os.path.isfile(path):
+            try:
+                os.utime(path, None)
+            except OSError:
+                pass
+
+
+def run_guard(data):
     # Loop guard: we already blocked this stop once; let it through now.
     if data.get("stop_hook_active"):
         return
+
+    # The ledger is the chair's; never hold a teammate's close on it.
+    if (os.environ.get("FABLE_ORCH_TEAMMATE_STOP") or "").strip() != "1":
+        if _is_teammate_session():
+            _metric("stop_suppressed", data.get("session_id"), reason="teammate")
+            return
 
     ledger = find_ledger(data.get("cwd"))
     if not ledger:

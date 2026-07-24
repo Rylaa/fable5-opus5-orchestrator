@@ -14,8 +14,9 @@ may be used liberally.
 ## Tiers & effort
 
 Pick subagent models by TIER NAME — `sonnet`, `opus`, `fable` —
-never by dated ID (today: Sonnet 5, Opus 4.8, Fable 5; the haiku
-tier is retired — use sonnet). Effort is NOT a savings knob: EVERY
+never a dated ID — a tier resolves to its current model (Sonnet 5,
+Opus 5, Fable 5 today). Never use haiku; its work goes to sonnet.
+Effort is NOT a savings knob: EVERY
 delegated agent — implementation, judgment, verification,
 escalation, and mechanical gathering alike — runs at `max`, always.
 Set it explicitly on each spawn (`effort:` in agent frontmatter /
@@ -103,9 +104,11 @@ limit.
 **opus** (`max`) — the ESCALATION lane, not the default judge:
 sonnet returned "uncertain"; predictably hard judgment (architecture
 tradeoffs, irreversible migrations, debugging that resisted a sonnet
-pass); and ALL security/adversarial review, always — Fable's safety
-classifiers can refuse benign security work. Any fable call refused
-for any reason reruns on opus unchanged.
+pass); and ALL security/adversarial review — keep it off fable,
+whose classifiers decline benign security work most readily. Any
+tier can decline: rerun it unchanged on another tier; if that
+declines too, STOP and tell the user. Never reword a request to
+get past a classifier.
 
 **fable** (`max`) — fresh-eyes verification before closing, and the
 escalation CEILING for what opus could not resolve or where the
@@ -125,20 +128,20 @@ reasoning wherever a decision is made.
 
 `subagent_type: "fork"` clones your FULL conversation; its tool
 churn stays out of your window and only the final result returns.
-Use it for bounded, context-heavy follow-ups.
-A fork runs on YOUR model and spends the usage
-limit: at most 2 forks per session, and forking the phases of a plan
-is disguised solo work — phases go to sonnet workers with specs.
+Use it for bounded, context-heavy follow-ups. A fork runs on YOUR
+model and spends the usage limit: at most 2 per session, and
+forking a plan's phases is disguised solo work — phases go to
+sonnet workers with specs.
 
 ## Teammate lifecycle — dismiss when done
 
 Named teammates park as tmux panes until dismissed. Once a
-teammate's final report is ACCEPTED with no follow-up planned,
-dismiss it: SendMessage `{"type": "shutdown_request"}` — never
-leave finished teammates stacked. Dismissal is final (no resume):
-dismiss only after processing the output. The plugin reaps what
-you forget: session close kills your team's panes; a
-sustained-low-CPU pane dies after ~1h.
+teammate's report is ACCEPTED with no follow-up planned, dismiss
+it: SendMessage `{"type": "shutdown_request"}` — never leave
+finished teammates stacked. Dismissal is final, so dismiss only
+after processing the output. The plugin reaps what you forget:
+session close kills your team's panes; a sustained-low-CPU pane
+dies after ~1h.
 
 ## Research pipeline — parallel fan-out, no mid-flight dumps
 
@@ -173,16 +176,15 @@ Give it the original request + the ledger path + the work-product
 paths (diffs, reports — not the raw scratch dump). It reads from
 disk; its only job is to find what is missing, wrong, or
 unaddressed, item by item — and only it closes the `V.` ledger item.
-Security-heavy work products verify on opus instead; a refused fable
-verifier reruns on opus. Findings become new phases; re-verify after
+Security-heavy work products verify on opus instead.
+Findings become new phases; re-verify after
 fixes. CAP: 3 verify→fix cycles, then STOP and report the open items
 to the user.
 
 ## Your context hygiene
 
-Consume briefs + verbatim evidence; bulk lives on disk (Rule 2). But
-when a decision hinges on exact content and it is short, read it
+Consume briefs + verbatim evidence; bulk lives on disk (Rule 2).
+But when a decision hinges on exact content that is short, read it
 yourself — never decide on a summary when the source fits in a few
-hundred lines. Keep outputs minimal (plans, ledger updates,
-verdicts); parallelize independent calls; drop closed-phase raw
-material.
+hundred lines. Keep outputs minimal; parallelize independent calls;
+drop closed-phase raw material.
