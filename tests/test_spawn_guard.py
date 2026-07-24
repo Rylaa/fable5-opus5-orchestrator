@@ -159,6 +159,28 @@ def test_lowercase_ledger_name_counts(repo_dir):
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
 
+def test_ledger_must_be_a_whole_name_segment(repo_dir):
+    # `LEDGER*.md` is a glob, not a prefix free-for-all: a file merely
+    # starting with the letters must not be mistaken for a ledger.
+    for name in ("ledgers.md", "ledgerish.md", "LEDGERS.md"):
+        d = repo_dir / ".workflow"
+        d.mkdir(parents=True, exist_ok=True)
+        for old in d.glob("*.md"):
+            old.unlink()
+        (d / name).write_text("- [ ] 1. item\n", encoding="utf-8")
+        assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir))), name
+
+
+def test_separator_forms_all_count(repo_dir):
+    for name in ("LEDGER.md", "LEDGER-topic.md", "LEDGER_notes.md", "ledger.md"):
+        d = repo_dir / ".workflow"
+        d.mkdir(parents=True, exist_ok=True)
+        for old in d.glob("*.md"):
+            old.unlink()
+        (d / name).write_text("- [ ] 1. item\n", encoding="utf-8")
+        assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None, name
+
+
 def test_archive_suffixed_ledger_does_not_satisfy_the_gate(repo_dir):
     # Renaming to *-archive.md is the documented way to retire a ledger;
     # an archived one must not keep the gates disarmed.

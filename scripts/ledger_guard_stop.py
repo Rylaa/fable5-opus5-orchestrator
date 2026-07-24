@@ -93,6 +93,10 @@ def active_ledger_in(dirpath):
         low = name.lower()
         if not (low.startswith("ledger") and low.endswith(".md")):
             continue
+        # "ledger" must be a whole segment: LEDGER.md, LEDGER-topic.md,
+        # LEDGER_topic.md — but not ledgers.md or ledgerish.md.
+        if low[6:7] not in (".", "-", "_"):
+            continue
         # Retired only when "archive" is the trailing segment, the form
         # this hook's own message asks for. A live ledger ABOUT archives
         # (LEDGER-archive-migration.md) must still count.

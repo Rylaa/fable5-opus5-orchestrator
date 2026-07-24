@@ -110,7 +110,7 @@ spawn (Agent / Task / Workflow)
        │
        ├─ subagent_type == "fork" ................. PASS  (forks already see the ledger)
        │
-       ├─ ACTIVE .workflow/LEDGER.md found ........ PASS  (cite its items per agent)
+       ├─ ACTIVE .workflow/LEDGER*.md found ....... PASS  (cite its items per agent)
        │  (cwd → repo root / $HOME)
        │
        └─ no ledger — or only a stale one ......... DENY  → "write the ledger first;
@@ -124,7 +124,7 @@ A ledger is *stale* when every item is closed AND it was last touched before thi
 ```
 TaskCreate (tracker task)
   │
-  ├─ ACTIVE .workflow/LEDGER.md found .............. PASS
+  ├─ ACTIVE .workflow/LEDGER*.md found ............. PASS
   ├─ fewer than 3 ledgerless tasks this session .... PASS  (small task lists are fine)
   │
   └─ 3rd ledgerless task ........................... DENY once → "multi-phase work:

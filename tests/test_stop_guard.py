@@ -450,12 +450,24 @@ def test_every_deadline_is_built_from_the_monotonic_clock():
         # time.time() + N` is the same bug wearing a type hint.
         def bindings(t):
             for node in ast.walk(t):
-                if isinstance(node, ast.Assign) and len(node.targets) == 1 \
-                        and isinstance(node.targets[0], ast.Name):
-                    yield node, node.targets[0].id, node.value
+                if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                    tgt = node.targets[0]
+                    if isinstance(tgt, ast.Name):
+                        yield node, tgt.id, node.value
+                    elif isinstance(tgt, (ast.Tuple, ast.List)) \
+                            and isinstance(node.value, (ast.Tuple, ast.List)) \
+                            and len(tgt.elts) == len(node.value.elts):
+                        # `a, deadline = 0, time.time() + B` — pair them up.
+                        for name_node, val in zip(tgt.elts, node.value.elts):
+                            if isinstance(name_node, ast.Name):
+                                yield node, name_node.id, val
                 elif isinstance(node, ast.AnnAssign) \
                         and isinstance(node.target, ast.Name) \
                         and node.value is not None:
+                    yield node, node.target.id, node.value
+                elif isinstance(node, ast.NamedExpr) \
+                        and isinstance(node.target, ast.Name):
+                    # `if (deadline := time.time() + B) ...`
                     yield node, node.target.id, node.value
 
         from_clock = {}
