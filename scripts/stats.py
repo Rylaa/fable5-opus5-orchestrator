@@ -91,6 +91,14 @@ def main():
         print(f"\nsolo multi-phase nudges: {tdenies} denied, "
               f"{tsupp} further ledgerless tasks after the reminder")
 
+    switches = events.get("inject_switch", 0)
+    if switches:
+        # Deliberately NOT folded into the profile counter above: that
+        # one counts sessions, and a switch is the same session moving
+        # tiers mid-flight.
+        print(f"\nmid-session profile switches: {switches} "
+              f"(short delta injected, not the full core)")
+
     if swarm_reaped:
         print(f"\ntmux teammate servers reaped: {swarm_reaped}")
     if panes_reaped:

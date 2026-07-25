@@ -6,7 +6,7 @@
 
 Fable 5 is the best chair a Claude Code session can have — and the most expensive seat in the house. Let it type every token itself and the session ends rate-limited, waiting out the reset window.
 
-This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends tokens only on planning, arbitration, and final decisions. The volume — implementation, research, briefs, review, bulk reading — goes to **Sonnet 5**; the predictably hard slices — architecture, irreversible migrations, security review — go **directly to Opus 5**, which doubles as the escalation lane. The chair sizes every worker's reasoning effort to the job — `low` for mechanical sweeps, `max` for the valve — and the close gets its fresh-eyes verification from **Opus 5 or Fable 5**, one bounded call per workflow.
+This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends tokens only on planning, arbitration, and final decisions. The volume — implementation, research, briefs, review, bulk reading — goes to **Sonnet 5**; the predictably hard slices — architecture, irreversible migrations, security review — go **directly to Opus 5**, which doubles as the escalation lane. The chair sizes every worker's reasoning effort to the job — `low` for mechanical sweeps, `max` for architecture and security — and **every close gets fresh-eyes verification** from **Opus 5 or Fable 5**, one bounded call per workflow, at an effort that scales with what the change can break.
 
 ## The division of labor
 
@@ -30,7 +30,7 @@ This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends t
                                                              │ uncertain /            │ beyond
                                                              │ high stakes            │ opus
                                                           ┌──▼────────────────────────▼──┐
-                                                          │        the valve · max       │
+                                                          │  the valve · by blast radius │
                                                           │  verify: OPUS 5 / FABLE 5    │
                                                           │  escalate: OPUS 5 → FABLE 5  │
                                                           └──────────────────────────────┘
@@ -49,7 +49,7 @@ Fable thinks. Sonnet carries the volume, Opus takes the hard slices. Opus or Fab
 │ Hard slices: architecture, migrations   │ Opus 5 (direct) │ nothing             │
 │ Security / adversarial review           │ Opus 5 (max)    │ nothing             │
 │ Escalations (sonnet "uncertain")        │ Opus → Fable    │ mostly nothing      │
-│ Fresh-eyes verification (the close)     │ Opus/Fable (max)│ at most 1 per close │
+│ Fresh-eyes verification — EVERY close   │ Opus/Fable 5    │ at most 1 per close │
 └─────────────────────────────────────────┴─────────────────┴─────────────────────┘
 ```
 
@@ -58,13 +58,13 @@ Fable thinks. Sonnet carries the volume, Opus takes the hard slices. Opus or Fab
 - **Fable tokens are the heaviest draw on your limit.** Every token of bulk work kept off the chair extends how long Fable stays in it.
 - **Sonnet 5 carries the volume.** Near-Opus quality on coding and agentic work, with the full effort ladder (`low` → `max`) — and the chair dials that ladder per task: mechanical sweeps run lean, routine judgment runs high.
 - **Opus 5 takes the hard slices directly.** Architecture tradeoffs, irreversible migrations, complex multi-system implementation, and all security/adversarial review are assigned straight to Opus — no failed Sonnet pass required — and Opus doubles as the escalation lane.
-- **The valve is two-tier.** Fresh-eyes verification of the close runs at `max` on Opus 5 or Fable 5 — Opus spares the Fable limit; the largest closes still get Fable, the strongest model at the single highest-stakes moment. Anthropic measured this worker+verifier split: Sonnet 5 with a Fable 5 advisor checking its work lands within 10% of Fable 5's score on the whole task. Escalations climb sonnet → opus → fable, with security reviews kept off Fable, whose classifiers decline benign security work most readily. Any tier can still decline it — the profile's rule is to rerun the refused task unchanged on another tier and, if that tier declines too, stop and tell you, never to reword the request past a classifier. A worker that returns "uncertain" never bounces back to the chair.
+- **The valve is two-tier, and it never opens by itself.** Fresh-eyes verification is mandatory on **every** close — what scales is the effort, not whether it happens. `max` is reserved for what it is worth paying for: architecture, irreversible changes, security, and the largest closes; a small, low-risk, non-security close verifies at `high`. It runs on Opus 5 or Fable 5 — Opus spares the Fable limit; the largest closes still get Fable, the strongest model at the single highest-stakes moment. Anthropic measured this worker+verifier split: Sonnet 5 with a Fable 5 advisor checking its work lands within 10% of Fable 5's score on the whole task. Escalations climb sonnet → opus → fable, with security reviews kept off Fable, whose classifiers decline benign security work most readily. Any tier can still decline it — the profile's rule is to rerun the refused task unchanged on another tier and, if that tier declines too, stop and tell you, never to reword the request past a classifier. A worker that returns "uncertain" never bounces back to the chair.
 
 ## What the plugin does
 
 Three layers, all mechanical — no CLAUDE.md editing, no manual routing.
 
-### 1 · The Fable profile
+### 1 · The Fable profile — a slim core plus a playbook
 
 A SessionStart hook injects the Fable-in-chair profile ([`instructions/dynamic-workflow-fable.md`](instructions/dynamic-workflow-fable.md)) into every **chair** session — auto-detected per session start, nothing to configure:
 
@@ -76,14 +76,28 @@ A SessionStart hook injects the Fable-in-chair profile ([`instructions/dynamic-w
 │ Worker effort            │ sized per task by the chair  │
 │ Verification             │ fresh-eyes on every close    │
 │ Disk hand-off            │ the default                  │
+│ Subagent report cap      │ 40 lines; bulk to disk       │
+│ Detail (full playbook)   │ skill, loaded on demand      │
 │ Spawn-guard threshold    │ 1500 chars                   │
 │ Task-list gate           │ 3rd task needs the ledger    │
 └──────────────────────────┴──────────────────────────────┘
 ```
 
-The profile routes subagents by tier name (`sonnet`, `opus`, `fable`), keeps bulk material on disk (`./.workflow/scratch/` — the chair receives briefs and verdicts, never dumps), and has the chair size each delegated agent's reasoning effort to the work — `low` for mechanical sweeps, `high` for implementation and review, `xhigh` for the hardest coding, `max` for verification, escalation, and security. Context-heavy follow-ups go to a **fork** (`subagent_type: "fork"`), which inherits the full conversation with no spec-writing tax.
+**The injected text is deliberately small.** It is prepended to every chair session, so every character is paid on every start — and most of it is detail the chair needs *once*, at its first delegation, not on the way in. So the core carries only what must be true from the first token (threshold, ledger, disk hand-off, spawn discipline, routing, the verification rule) and requires the chair to load [`skills/playbook/SKILL.md`](skills/playbook/SKILL.md) — the `orchestrator:playbook` skill, auto-discovered from the plugin — **before its first delegation**. The playbook holds the full contract: research pipeline, output contract, spawn economics, forks, teammate lifecycle, verification procedure. Sessions that never delegate never pay for it.
+
+The core routes subagents by tier name (`sonnet`, `opus`, `fable`), keeps bulk material on disk (`./.workflow/scratch/` — the chair receives briefs and verdicts, never dumps), and has the chair size each delegated agent's reasoning effort to the work — `low` for mechanical sweeps, `high` for implementation and review, `xhigh` for the hardest coding, `max` for architecture, migrations, security, and escalations. Context-heavy follow-ups go to a **fork** (`subagent_type: "fork"`), which inherits the full conversation with no spec-writing tax, capped at two per session.
+
+Three rules in the contract exist purely to keep worker output from undoing the saving:
+
+- **Reports are capped at 40 lines.** Any verbatim block over ten lines goes to `./.workflow/scratch/` and the report carries the path. A report that violates the contract is rejected and re-run, not silently accepted.
+- **Research is one worker per source, not two.** A single Sonnet agent fetches the source **verbatim to disk first** — the disk copy is the audit trail, with no relevance filtering during the fetch — and only then returns a brief built from that copy: claims, evidence, exact quotes, confidence, contradictions, and the path. One synthesizer reads across the briefs. The chair checks the synthesis against the ledger and decides; intermediates never enter its context.
+- **Similar mechanical work is batched into one worker.** Every spawn pays a fixed overhead — system prompt, project rules, tool schemas — before doing anything useful. Five greps are one agent with a checklist, not five agents. Separate spawns are for genuine parallelism or worktree isolation, which earn that overhead back.
 
 **When the Fable limit runs dry**, move the chair to Opus (`/model`): the injector serves the matching OPUS profile ([`instructions/dynamic-workflow-opus.md`](instructions/dynamic-workflow-opus.md)) — same discipline, the fable tier rests, fresh-eyes verification and the escalation ceiling fall to a fresh Opus agent. Opus is a drop-in chair: it orchestrates exactly as Fable did, only Opus now sits in the seat.
+
+**Switching chairs mid-session costs a few lines, not a whole profile.** If a session that already received a core profile is **resumed** with the other one selected, the full core is not sent again — it is still in that session's context, and re-sending it spends the very limit the switch is trying to preserve. A short switch note ([`instructions/profile-switch-to-opus.md`](instructions/profile-switch-to-opus.md), [`instructions/profile-switch-to-fable.md`](instructions/profile-switch-to-fable.md)) carries only what changed.
+
+The delta is **resume-only, on purpose.** A `compact` re-fire happens precisely *because* the context was rewritten, and a `clear` because it was discarded; on either — and on any future session-start kind the injector does not recognise — the profile change is delivered as the **full core**, because the switch note's "every other rule from the already-injected core profile stays in force" would otherwise be a promise the chair has no way to check. A plain re-fire on an unchanged chair is untouched and always gets the full core, as does any session whose marker records no previous injection. The trade is deliberately lopsided: an unnecessary full core costs a few thousand characters, while a delta landing on a wiped context costs the ledger rule, the threshold, and the routing — silently.
 
 Detection runs at each session start, in priority order: an explicit `FABLE_ORCH_PROFILE=fable|opus` pin, then the SessionStart payload's model, then **the default model `/model` wrote to `settings.json`** (so an Opus default is honored even when the harness omits the payload model on a resume/compact — the case that used to fall back to Fable), then the last model this session saw. A mid-session `/model` switch still only takes effect at the next session start (SessionStart is the only injection point) — but the settings fallback makes that next start reliable. To pin the chair regardless of detection, set `FABLE_ORCH_PROFILE=opus` while you ride out the Fable limit, `fable` (or unset) when it resets.
 
@@ -217,7 +231,7 @@ Requires `python3` on PATH; macOS and Linux only — the hooks also shell out to
 }
 ```
 
-3. Append `instructions/dynamic-workflow-fable.md` to `~/.claude/CLAUDE.md`.
+3. Append `instructions/dynamic-workflow-fable.md` to `~/.claude/CLAUDE.md`, and copy `skills/playbook/SKILL.md` to `~/.claude/skills/playbook/SKILL.md`. Note the name mismatch: the core text asks for `orchestrator:playbook`, which is the *plugin*-namespaced name and only resolves when the plugin is installed. Copied by hand it is a personal skill listed as plain `playbook` — so either read that instruction as `playbook`, or install as a plugin and skip this step.
 4. Without the SessionStart injector there is no per-session `started` marker, so the stop guard can't tell another session's ledger from yours (every open ledger costs one reminder per session instead of zero) and the spawn/task gates can't ignore stale fully-closed ledgers.
 
 > Don't run the plugin AND the manual install side by side — you'd get every guard twice.
@@ -246,7 +260,7 @@ Set these in `~/.claude/settings.json` under `"env"`.
 
 **The session marker.** The SessionStart injector writes a per-session temp file whose immutable `started` timestamp survives resume/clear/compact re-injections — the stop guard compares ledger mtimes against it to decide ownership, and the SessionEnd reaper anchors its cleanup to it. The SessionEnd hook removes the session's temp files and sweeps any older than 96 hours.
 
-**Metrics.** Every hook appends one event line to `~/.claude/fable-orch/metrics.jsonl` (events only — never prompt content): injections per model, spawn/task denies and passes, stop blocks and suppressions, reaps. `python3 scripts/stats.py` prints the summary, so the next "how is this performing?" question is answered with data. Disable with `FABLE_ORCH_METRICS=0`.
+**Metrics.** Every hook appends one event line to `~/.claude/fable-orch/metrics.jsonl` (events only — never prompt content): injections per model, mid-session profile switches, spawn/task denies and passes, stop blocks and suppressions, reaps. `python3 scripts/stats.py` prints the summary, so the next "how is this performing?" question is answered with data. Disable with `FABLE_ORCH_METRICS=0`.
 
 ## Tests
 
@@ -254,7 +268,9 @@ Set these in `~/.claude/settings.json` under `"env"`.
 python3 -m pytest tests/ -q
 ```
 
-The hooks are plain stdin/stdout JSON filters; the tests run them end-to-end as subprocesses — the spawn threshold and its env override, the fork exemption, Workflow script gating, the task-list gate (counting, one deny per session, session isolation), the upward ledger search and its repo-root/worktree/$HOME boundaries, stop-guard session scoping and ownership, metrics emission and opt-out, injection, cache cleanup, and teammate reaping (against a fake tmux/ps on PATH).
+The hooks are plain stdin/stdout JSON filters; the tests run them end-to-end as subprocesses — the spawn threshold and its env override, the fork exemption, Workflow script gating, the task-list gate (counting, one deny per session, session isolation), the upward ledger search and its repo-root/worktree/$HOME boundaries, stop-guard session scoping and ownership, metrics emission and opt-out, injection, the mid-session profile-switch delta, cache cleanup, and teammate reaping (against a fake tmux/ps on PATH). A second layer pins the *content*: the cores stay under their size budget, both keep requiring the playbook skill, and the decisions that survived the diet (fresh-eyes on every close, the fork cap, the report cap, the batching rule) are asserted line by line.
+
+The hooks decide "chair or teammate?" by walking the real process tree, so the suite pins that ambient too — otherwise running the tests from inside a named teammate makes every chair-behaviour test fail for a reason unrelated to the code.
 
 ## Honest limitations
 

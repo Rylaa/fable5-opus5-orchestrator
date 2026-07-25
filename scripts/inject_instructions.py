@@ -30,6 +30,30 @@ session start (startup/resume/clear), because SessionStart is the sole
 injection point — but (3) makes that next start reliable instead of
 racy.
 
+PROFILE-SWITCH DELTA. When a session that already received a core
+profile re-fires with the OTHER profile selected (the Fable limit ran
+dry mid-session and the chair moved to Opus, or back), the full core is
+NOT re-sent — it is already in context, and re-sending it spends the
+very limit it exists to protect. A short switch note carries only the
+deltas instead:
+
+    fable -> opus -> profile-switch-to-opus.md
+    opus  -> fable -> profile-switch-to-fable.md
+
+The marker records the profile this session was last TOLD, so a plain
+re-fire (same profile) is indistinguishable from before — it still gets
+the full core. A marker with no recorded profile (a pre-0.15.0 marker,
+or a session whose only fires were teammate skips) also gets the full
+core: a delta is only ever safe on top of a core this session saw.
+
+The delta is further gated to SessionStart `source == "resume"`, the
+only fire that provably leaves the earlier injection in context.
+`compact` fires precisely BECAUSE the context was rewritten, `clear`
+because it was discarded, and a future source is simply unproven — all
+three get the full core even when the profile changed. The switch note
+says "every other rule from the already-injected core profile stays in
+force", which is a lie the chair cannot detect if the core is gone.
+
 TEAMMATE sessions are skipped entirely. Named agent-teams workers are
 full claude sessions and fire SessionStart like the chair does — but the
 profile is written for the chair alone: injected into a worker it says
@@ -112,17 +136,22 @@ def _configured_model():
 
 
 def _read_marker(cache):
-    """(started, model) from the marker file; (None, None) if unreadable."""
+    """(started, model, profile) from the marker; (None, None, None) if unreadable.
+
+    `profile` is the profile this session was last INJECTED with — the
+    switch detector's only input. It is absent on markers written by
+    pre-0.15.0 versions and on sessions whose fires were all teammate
+    skips; in both cases the caller must fall back to the full core."""
     if not cache:
-        return None, None
+        return None, None, None
     try:
         with open(cache, encoding="utf-8") as f:
             d = json.load(f)
         if isinstance(d, dict):
-            return d.get("started"), d.get("model")
+            return d.get("started"), d.get("model"), d.get("profile")
     except Exception:
         pass
-    return None, None
+    return None, None, None
 
 
 TEAMMATE_DETECT_BUDGET = 1.5  # seconds; the walk measures ~5ms in practice
@@ -205,11 +234,29 @@ def main():
 
     model = data.get("model")  # optional; the harness omits it on some fires
     session_id = data.get("session_id")
+    fire = data.get("source")  # startup | resume | clear | compact (advisory)
     cache = session_model_cache_path(session_id)
-    prev_started, prev_model = _read_marker(cache)
+    prev_started, prev_model, prev_profile = _read_marker(cache)
 
     profile, source = resolve_profile(model, _configured_model(), prev_model)
-    filename = f"dynamic-workflow-{profile}.md"
+
+    # Profile-switch delta: this session already carries a core profile
+    # and the chair has since moved to the other tier. Re-sending ~3.7k
+    # chars of unchanged rules costs the limit the profile exists to
+    # protect, so only the deltas go out. Requires a RECORDED previous
+    # profile — never inferred, because a delta on top of no core would
+    # silently strip the chair of every orchestration rule.
+    # GATED TO `resume`, the only fire that provably keeps the core in
+    # context. `compact` re-fires BECAUSE the context was rewritten and
+    # `clear` because it was discarded — a delta on either can leave the
+    # chair with no threshold, no ledger rule and no routing, silently.
+    # Any unrecognised future source takes the same safe side: an
+    # unproven source gets the full core. Wrong-delta costs a ruleless
+    # chair; wrong-full-core costs ~3.7k chars.
+    switched = (bool(prev_profile) and prev_profile != profile
+                and fire == "resume")
+    filename = (f"profile-switch-to-{profile}.md" if switched
+                else f"dynamic-workflow-{profile}.md")
 
     # The profile is chair-only; a teammate session skips the injection
     # but still gets its marker below — stop, spawn, and cleanup key off
@@ -252,6 +299,12 @@ def main():
                 except OSError:
                     started = time.time()
             stored_model = model if str(model or "").strip() else prev_model
+            # `profile` records what this session was actually TOLD, so
+            # the next fire can tell a switch from a plain re-fire. A
+            # teammate received nothing, so its marker carries the
+            # previous value forward rather than claiming an injection
+            # that never happened.
+            stored_profile = prev_profile if teammate else profile
             # Atomic replace: a crash mid-write must never leave a
             # truncated marker. The tmp name keeps the fable-orch-*.json
             # shape so an orphan from a crash still matches the 96h sweep.
@@ -259,7 +312,7 @@ def main():
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(
                     {"model": stored_model, "session_id": session_id,
-                     "started": round(started, 3)},
+                     "started": round(started, 3), "profile": stored_profile},
                     f,
                 )
             os.replace(tmp, cache)
@@ -271,7 +324,16 @@ def main():
                 source=source, reason="teammate")
         return
 
-    _metric("inject", session_id, model=model, profile=profile, source=source)
+    if switched:
+        # Distinct event, not a field on `inject`: an inject counts a
+        # session that received the discipline, a switch counts a chair
+        # that moved tiers mid-session. `fire` records which SessionStart
+        # kind delivered the delta (resume/compact/clear).
+        _metric("inject_switch", session_id, model=model, profile=profile,
+                source=source, from_profile=prev_profile, fire=fire)
+    else:
+        _metric("inject", session_id, model=model, profile=profile,
+                source=source)
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",

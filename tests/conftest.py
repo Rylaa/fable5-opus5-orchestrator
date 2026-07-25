@@ -1,7 +1,9 @@
+import functools
 import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -28,6 +30,40 @@ STRIP_ENV = [
 ]
 
 
+@functools.lru_cache(maxsize=1)
+def _chair_ps_dir():
+    """A PATH shim that pins the ancestor walk to an untagged `claude`.
+
+    The hooks answer "am I a teammate?" by walking the REAL process
+    tree for `--agent-id`. That makes the suite's result depend on WHO
+    RAN IT: from inside a named agent-teams worker — a teammate running
+    the tests, or a fresh-eyes verifier checking a release — every hook
+    correctly decides "teammate", skips its chair behaviour, and ~40
+    tests fail for a reason that has nothing to do with the code under
+    test. Pinning the ambient here is the same move as the
+    CLAUDE_CONFIG_DIR and FABLE_ORCH_SWARM_CLEANUP defaults below: the
+    sandbox states its own world instead of inheriting the developer's.
+
+    Only the ancestor-walk invocation is answered; every other `ps`
+    call falls through to the real binary, and any test that exercises
+    the detection supplies its own `ps` via env_extra["PATH"] and never
+    reaches this shim.
+    """
+    bin_dir = Path(tempfile.mkdtemp(prefix="fable-orch-testshim-"))
+    ps = bin_dir / "ps"
+    ps.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os, sys\n"
+        "if 'ppid=,command=' in sys.argv:\n"
+        "    print('1 claude')\n"
+        "    sys.exit(0)\n"
+        "os.execv('/bin/ps', ['ps'] + sys.argv[1:])\n",
+        encoding="utf-8",
+    )
+    os.chmod(ps, 0o755)
+    return str(bin_dir)
+
+
 def run_hook(script, payload=None, raw=None, env_extra=None, tmpdir=None):
     """Run a hook script as a subprocess, exactly as Claude Code would.
 
@@ -49,6 +85,9 @@ def run_hook(script, payload=None, raw=None, env_extra=None, tmpdir=None):
         env["TMP"] = str(tmpdir)
     if env_extra:
         env.update(env_extra)
+    # Ambient "this is a chair" — unless the test drives `ps` itself.
+    if not (env_extra or {}).get("PATH"):
+        env["PATH"] = _chair_ps_dir() + os.pathsep + env.get("PATH", "")
     # Insurance: a test that turns the swarm cleanup ON without pointing
     # tmux at a sandbox would sweep the developer's REAL tmux servers.
     assert env.get("FABLE_ORCH_SWARM_CLEANUP") != "1" or "TMUX_TMPDIR" in env, \
