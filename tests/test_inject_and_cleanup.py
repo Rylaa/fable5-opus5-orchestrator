@@ -1,4 +1,5 @@
 import json
+import os
 
 from conftest import REPO, run_hook
 
@@ -253,6 +254,72 @@ def test_inject_preserves_started_across_reruns(tmp_path):
     run_hook(INJECT, {"model": "claude-fable-5", "session_id": "s-started"},
              env_extra=env, tmpdir=tmp_path)
     assert json.loads(cache.read_text(encoding="utf-8"))["started"] == 123.0
+
+
+def _fake_ps_env(tmp_path, argv_line):
+    """A fake `ps` on PATH: its one output line is the ancestor walk's
+    first hop — the same fixture the stop guard's teammate tests use."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    ps = bin_dir / "ps"
+    ps.write_text(
+        "#!/usr/bin/env python3\nprint(%r)\n" % argv_line, encoding="utf-8")
+    os.chmod(ps, 0o755)
+    return {"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+            "CLAUDE_PLUGIN_ROOT": str(REPO)}
+
+
+def test_teammate_session_gets_no_profile(tmp_path):
+    # Teammates fire SessionStart like any session, but the profile is
+    # chair-only: injected into a worker it says "you are the
+    # ORCHESTRATOR" and invites it to spawn subagents of its own.
+    # Measured before the fix: 172 of 270 injected sessions were
+    # teammates.
+    env = _fake_ps_env(
+        tmp_path, "1 claude --agent-id worker@session-t --agent-name worker")
+    result = run_hook(INJECT, {"model": "claude-sonnet-5", "session_id": "s-tm"},
+                      env_extra=env, tmpdir=tmp_path)
+    assert result is None
+    # The marker is still written: stop, spawn, and cleanup key off it.
+    cache = tmp_path / "fable-orch-model-s-tm.json"
+    assert cache.is_file()
+    assert json.loads(cache.read_text(encoding="utf-8"))["model"] == "claude-sonnet-5"
+
+
+def test_teammate_skip_records_metric(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    env = _fake_ps_env(tmp_path, "1 claude --agent-id w@s --agent-name w")
+    env.update({"HOME": str(home), "FABLE_ORCH_METRICS": "1"})
+    run_hook(INJECT, {"model": "claude-sonnet-5", "session_id": "s-tm-m"},
+             env_extra=env, tmpdir=tmp_path)
+    log = home / ".claude" / "fable-orch" / "metrics.jsonl"
+    rec = json.loads(log.read_text(encoding="utf-8").strip().splitlines()[0])
+    assert rec["event"] == "inject_skipped"
+    assert rec["reason"] == "teammate"
+    # Resolution ran before the skip: the record still says which
+    # profile the worker WOULD have received.
+    assert rec["profile"] == "fable"
+    assert rec["source"] == "payload"
+
+
+def test_teammate_inject_escape_hatch(tmp_path):
+    # FABLE_ORCH_TEAMMATE_INJECT=1 restores the old inject-everyone
+    # behaviour, mirroring FABLE_ORCH_TEAMMATE_STOP on the close guard.
+    env = _fake_ps_env(tmp_path, "1 claude --agent-id w@s --agent-name w")
+    env["FABLE_ORCH_TEAMMATE_INJECT"] = "1"
+    result = run_hook(INJECT, {"model": "claude-sonnet-5", "session_id": "s-tm-e"},
+                      env_extra=env, tmpdir=tmp_path)
+    assert "(FABLE profile)" in context_of(result)
+
+
+def test_chair_still_injected_when_ancestor_is_plain_claude(tmp_path):
+    # Same fake ps, no --agent-id: this is the chair and must keep
+    # receiving the profile.
+    env = _fake_ps_env(tmp_path, "1 claude")
+    result = run_hook(INJECT, {"model": "claude-fable-5", "session_id": "s-chair"},
+                      env_extra=env, tmpdir=tmp_path)
+    assert "(FABLE profile)" in context_of(result)
 
 
 def test_metrics_rotation_caps_the_log(tmp_path):

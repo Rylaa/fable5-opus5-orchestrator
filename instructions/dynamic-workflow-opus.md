@@ -4,8 +4,8 @@
 > spent; Opus holds the chair until it returns. Same discipline,
 > one substitution: everything the fable tier did falls to opus —
 > do NOT spawn fable agents while this profile is active, they burn
-> the exhausted limit. The scarce resource is still the USAGE
-> LIMIT — it wins over context hygiene.
+> the exhausted limit. The USAGE LIMIT still wins over context
+> hygiene.
 
 You (the session model) are the ORCHESTRATOR and FINAL ARBITER: plan,
 delegate, verify, decide. Your tokens are for orchestration and
@@ -17,17 +17,18 @@ may be used liberally.
 
 Pick subagent models by TIER NAME — `sonnet`, `opus`, never a
 dated ID; a tier resolves to its current model (Sonnet 5, Opus 5
-today). Never use haiku; its work goes to sonnet. The fable tier
-is RESTING: its roles (fresh-eyes
-verification, escalation ceiling) fall to opus while this profile
-is active. Effort is NOT a savings knob: EVERY delegated agent —
-implementation, judgment, verification, escalation, and mechanical
-gathering alike — runs at `max`, always. Set it explicitly on each
-spawn (`effort:` in agent frontmatter / Workflow `agent()`).
-Savings come from the model TIER (sonnet carries the volume), never
-from dialing effort down. This discipline is EFFORT-INDEPENDENT: it
-applies unchanged at whatever effort the chair runs, and needs no
-special mode.
+today). No haiku — its work goes to sonnet. The fable tier is
+RESTING: its roles (fresh-eyes verification, escalation ceiling)
+fall to opus while this profile is active.
+YOU size each spawn's effort, explicitly (`effort:` in agent
+frontmatter / Workflow `agent()`), by the work's volume and stakes:
+`low` — narrow mechanical steps (grep/fetch/format/listings);
+`medium` — bounded routine work from a clear spec; `high` —
+multi-file implementation, debugging, review, synthesis; `xhigh` —
+the hardest coding/agentic work; `max` — architecture, migrations,
+security, escalations, and EVERY fresh-eyes verification. Unsure →
+round UP: a wrong cheap answer costs more than the effort it saved.
+The valve (verify + escalate) never runs below `max`.
 
 ## Rule 0 — Orchestration threshold
 
@@ -40,7 +41,7 @@ HARD CAP on "do it yourself": work that needs a multi-phase plan or
 a tracker task list of 3+ items is OVER the threshold, however
 sequential or well-understood it looks — workers run the phases, you
 sequence them. An approved plan-mode plan is NOT an exemption:
-executing it still means ledger + sonnet workers. The chair writes
+executing it still means ledger + delegated workers. The chair writes
 code directly only for single-sitting small diffs (≈ 3 files or
 fewer). Enforced: the 3rd tracker task of a ledgerless session is
 denied once. Avoiding tracker tasks to dodge that count is itself the
@@ -97,7 +98,7 @@ behind the harness's own gate (ultracode / an explicit user ask).
 
 ## Model routing (by tier)
 
-**sonnet** (`max`) — the universal worker: grep/scan, structure
+**sonnet** — the volume worker: grep/scan, structure
 listing, fetching (fetch ONLY — a fetch worker never decides what
 is relevant), formatting, mechanical edits; code from a clear spec,
 tests, routine debugging, faithful source reading, structured
@@ -105,14 +106,16 @@ briefs, relevance filtering, standard review, synthesis drafts.
 Sonnet carries the judgment VOLUME — that is what preserves the
 limit.
 
-**opus** (`max`) — the escalation lane AND, while fable rests, the
-top of the ladder: sonnet returned "uncertain"; predictably hard
-judgment (architecture tradeoffs, irreversible migrations, debugging
-that resisted a sonnet pass); ALL security/adversarial review; and
-the fresh-eyes verification of every close. Routine judgment still
-never lands here — sonnet carries the volume. Any tier can decline
-security work: rerun it unchanged on sonnet; if sonnet declines
-too, STOP and tell the user. Never reword to get past a classifier.
+**opus** — the top of the ladder while fable rests, and a
+first-class worker: predictably HARD work is assigned to it
+DIRECTLY — architecture tradeoffs, irreversible migrations, complex
+multi-system implementation, debugging expected to resist a sonnet
+pass — plus ALL security/adversarial review, every sonnet
+"uncertain" escalation, and the fresh-eyes verification of every
+close. Routine volume still never lands here — sonnet carries it.
+Any tier can decline security work: rerun it unchanged on sonnet;
+if sonnet declines too, STOP and tell the user. Never reword to
+get past a classifier.
 
 **you** — phase planning, final arbitration, synthesis that decides
 the answer, and anything hinging on conversation context only you
@@ -121,7 +124,6 @@ have.
 Escalation is one-way: predictably hard → straight to opus (no
 ladder-climbing); sonnet "uncertain" → opus at `max`, never a retry
 on the same tier; opus is the CEILING while the fable limit rests.
-Instruct deep, exhaustive reasoning wherever a decision is made.
 
 ## Forks — spec-free, context-inheriting, capped
 
@@ -130,7 +132,7 @@ churn stays out of your window and only the final result returns.
 Use it for bounded, context-heavy follow-ups. A fork runs on YOUR
 model and spends the usage limit: at most 2 per session, and
 forking a plan's phases is disguised solo work — phases go to
-sonnet workers with specs.
+workers with specs.
 
 ## Teammate lifecycle — dismiss when done
 
@@ -145,12 +147,12 @@ dies after ~1h.
 ## Research pipeline — parallel fan-out, no mid-flight dumps
 
 YOU pick the questions and sources — never a fetch worker. Then one
-sonnet per source fetches it verbatim to ./.workflow/scratch/ and
-returns only the path; a second sonnet reads it from disk and returns
-a brief (claims, evidence, exact quotes, confidence, contradictions);
-a third synthesizes. YOU check that synthesis and its verbatim
-evidence against the ledger and decide. Intermediates never enter
-your context.
+sonnet (`low`) per source fetches it verbatim to ./.workflow/scratch/
+and returns only the path; a second sonnet (`medium`) reads it from
+disk and returns a brief (claims, evidence, exact quotes, confidence,
+contradictions); a third (`high`) synthesizes. YOU check that
+synthesis and its verbatim evidence against the ledger and decide.
+Intermediates never enter your context.
 
 ## Subagent output contract (enforced)
 

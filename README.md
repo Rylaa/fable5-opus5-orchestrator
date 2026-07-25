@@ -6,7 +6,7 @@
 
 Fable 5 is the best chair a Claude Code session can have — and the most expensive seat in the house. Let it type every token itself and the session ends rate-limited, waiting out the reset window.
 
-This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends tokens only on planning, arbitration, and final decisions. Everything else — implementation, research, briefs, review, bulk reading — goes to **Sonnet 5**. **Opus 5** stays on the roster as the escalation lane (security reviews pinned there), and the close gets its fresh-eyes verification from **Fable 5** itself — one bounded call per workflow.
+This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends tokens only on planning, arbitration, and final decisions. The volume — implementation, research, briefs, review, bulk reading — goes to **Sonnet 5**; the predictably hard slices — architecture, irreversible migrations, security review — go **directly to Opus 5**, which doubles as the escalation lane. The chair sizes every worker's reasoning effort to the job — `low` for mechanical sweeps, `max` for the valve — and the close gets its fresh-eyes verification from **Opus 5 or Fable 5**, one bounded call per workflow.
 
 ## The division of labor
 
@@ -14,49 +14,51 @@ This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends t
                         ┌─────────────────────────────────┐
                         │         FABLE 5 — chair         │
                         │    plan · arbitrate · decide    │
+                        │  sizes tier + effort per task   │
                         └────────────────┬────────────────┘
                                          │
                 specs & ledger down      │      briefs & verdicts up
                                          │
-           ┌─────────────────────────────┼─────────────────────────────┐
-           ▼                             ▼                             ▼
-┌─────────────────────┐       ┌─────────────────────┐       ┌─────────────────────┐
-│   SONNET 5 · max    │       │   SONNET 5 · max    │       │   SONNET 5 · max    │
-│   mechanical bulk   │       │   implementation    │       │   routine judgment  │
-│   grep·fetch·scan   │       │   code · tests      │       │   briefs · review   │
-│   format · read     │       │   debug · refactor  │       │   filtering         │
-└─────────────────────┘       └─────────────────────┘       └──────────┬──────────┘
-                                                                       │ uncertain /
-                                                                       │ high stakes
-                                                            ┌──────────▼──────────┐
-                                                            │      the valve      │
-                                                            │  verify: FABLE 5    │
-                                                            │  escalate: OPUS 5   │
-                                                            │  (→ fable ceiling)  │
-                                                            └─────────────────────┘
+           ┌────────────────────────┬────┴───────────────────┬────────────────────────┐
+           ▼                        ▼                        ▼                        ▼
+┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
+│ SONNET 5 · low–med  │  │ SONNET 5 · med–high │  │ SONNET 5 · med–high │  │  OPUS 5 · high–max  │
+│   mechanical bulk   │  │   implementation    │  │   routine judgment  │  │  hard work · direct │
+│   grep·fetch·scan   │  │   code · tests      │  │   briefs · review   │  │  architecture       │
+│   format · read     │  │   debug · refactor  │  │   filtering         │  │  migrations·security│
+└─────────────────────┘  └─────────────────────┘  └──────────┬──────────┘  └──────────┬──────────┘
+                                                             │ uncertain /            │ beyond
+                                                             │ high stakes            │ opus
+                                                          ┌──▼────────────────────────▼──┐
+                                                          │        the valve · max       │
+                                                          │  verify: OPUS 5 / FABLE 5    │
+                                                          │  escalate: OPUS 5 → FABLE 5  │
+                                                          └──────────────────────────────┘
 ```
 
-Fable thinks. Sonnet does. Fable checks the close. Your limit pays for the thinking plus one verification per close:
+Fable thinks. Sonnet carries the volume, Opus takes the hard slices. Opus or Fable checks the close. Your limit pays for the thinking plus at most one verification per close:
 
 ```
 ┌─────────────────────────────────────────┬─────────────────┬─────────────────────┐
 │ Work                                    │ Runs on         │ Fable limit pays    │
 ├─────────────────────────────────────────┼─────────────────┼─────────────────────┤
 │ Phase planning, arbitration, decisions  │ Fable 5 (chair) │ yes                 │
-│ Implementation, tests, refactors        │ Sonnet 5 max    │ nothing             │
-│ Source briefs, filtering, code review   │ Sonnet 5 max    │ nothing             │
-│ Bulk gathering (fetch, grep, scan)      │ Sonnet 5 max    │ nothing             │
-│ Fresh-eyes verification (the close)     │ Fable 5 max     │ one call per close  │
-│ Escalations (hard judgment)             │ Opus → Fable    │ mostly nothing      │
-│ Security / adversarial review           │ Opus (not Fable)│ nothing             │
+│ Implementation, tests, refactors        │ Sonnet 5        │ nothing             │
+│ Source briefs, filtering, code review   │ Sonnet 5        │ nothing             │
+│ Bulk gathering (fetch, grep, scan)      │ Sonnet 5 (low)  │ nothing             │
+│ Hard slices: architecture, migrations   │ Opus 5 (direct) │ nothing             │
+│ Security / adversarial review           │ Opus 5 (max)    │ nothing             │
+│ Escalations (sonnet "uncertain")        │ Opus → Fable    │ mostly nothing      │
+│ Fresh-eyes verification (the close)     │ Opus/Fable (max)│ at most 1 per close │
 └─────────────────────────────────────────┴─────────────────┴─────────────────────┘
 ```
 
-## Why Fable 5 × Sonnet 5 is the right couple
+## Why Fable 5 × Sonnet 5 × Opus 5 is the right trio
 
 - **Fable tokens are the heaviest draw on your limit.** Every token of bulk work kept off the chair extends how long Fable stays in it.
-- **Sonnet 5 closed the gap.** Near-Opus quality on coding and agentic work, with the full effort ladder (`low` → `xhigh` → `max`). At `max` it carries the routine judgment — briefs, filtering, standard review — that used to need an Opus call.
-- **The valve is two-tier.** Fresh-eyes verification of the close runs on Fable 5 — the strongest model at the single highest-stakes moment, once per close. Escalations climb sonnet → opus → fable, with security reviews kept off Fable, whose classifiers decline benign security work most readily. Any tier can still decline it — the profile's rule is to rerun the refused task unchanged on another tier and, if that tier declines too, stop and tell you, never to reword the request past a classifier. A worker that returns "uncertain" never bounces back to the chair.
+- **Sonnet 5 carries the volume.** Near-Opus quality on coding and agentic work, with the full effort ladder (`low` → `max`) — and the chair dials that ladder per task: mechanical sweeps run lean, routine judgment runs high.
+- **Opus 5 takes the hard slices directly.** Architecture tradeoffs, irreversible migrations, complex multi-system implementation, and all security/adversarial review are assigned straight to Opus — no failed Sonnet pass required — and Opus doubles as the escalation lane.
+- **The valve is two-tier.** Fresh-eyes verification of the close runs at `max` on Opus 5 or Fable 5 — Opus spares the Fable limit; the largest closes still get Fable, the strongest model at the single highest-stakes moment. Anthropic measured this worker+verifier split: Sonnet 5 with a Fable 5 advisor checking its work lands within 10% of Fable 5's score on the whole task. Escalations climb sonnet → opus → fable, with security reviews kept off Fable, whose classifiers decline benign security work most readily. Any tier can still decline it — the profile's rule is to rerun the refused task unchanged on another tier and, if that tier declines too, stop and tell you, never to reword the request past a classifier. A worker that returns "uncertain" never bounces back to the chair.
 
 ## What the plugin does
 
@@ -64,13 +66,14 @@ Three layers, all mechanical — no CLAUDE.md editing, no manual routing.
 
 ### 1 · The Fable profile
 
-A SessionStart hook injects the Fable-in-chair profile ([`instructions/dynamic-workflow-fable.md`](instructions/dynamic-workflow-fable.md)) into every session — auto-detected per session start, nothing to configure:
+A SessionStart hook injects the Fable-in-chair profile ([`instructions/dynamic-workflow-fable.md`](instructions/dynamic-workflow-fable.md)) into every **chair** session — auto-detected per session start, nothing to configure:
 
 ```
 ┌──────────────────────────┬──────────────────────────────┐
 │ Scarce resource          │ your usage limit             │
 │ Bounded / medium work    │ delegated                    │
 │ Requirements Ledger      │ file, before any delegation  │
+│ Worker effort            │ sized per task by the chair  │
 │ Verification             │ fresh-eyes on every close    │
 │ Disk hand-off            │ the default                  │
 │ Spawn-guard threshold    │ 1500 chars                   │
@@ -78,11 +81,13 @@ A SessionStart hook injects the Fable-in-chair profile ([`instructions/dynamic-w
 └──────────────────────────┴──────────────────────────────┘
 ```
 
-The profile routes subagents by tier name (`sonnet`, `opus`, `fable`), keeps bulk material on disk (`./.workflow/scratch/` — the chair receives briefs and verdicts, never dumps), and runs every delegated agent at `max` effort — savings come from the tier, never from dialing effort down. Context-heavy follow-ups go to a **fork** (`subagent_type: "fork"`), which inherits the full conversation with no spec-writing tax.
+The profile routes subagents by tier name (`sonnet`, `opus`, `fable`), keeps bulk material on disk (`./.workflow/scratch/` — the chair receives briefs and verdicts, never dumps), and has the chair size each delegated agent's reasoning effort to the work — `low` for mechanical sweeps, `high` for implementation and review, `xhigh` for the hardest coding, `max` for verification, escalation, and security. Context-heavy follow-ups go to a **fork** (`subagent_type: "fork"`), which inherits the full conversation with no spec-writing tax.
 
 **When the Fable limit runs dry**, move the chair to Opus (`/model`): the injector serves the matching OPUS profile ([`instructions/dynamic-workflow-opus.md`](instructions/dynamic-workflow-opus.md)) — same discipline, the fable tier rests, fresh-eyes verification and the escalation ceiling fall to a fresh Opus agent. Opus is a drop-in chair: it orchestrates exactly as Fable did, only Opus now sits in the seat.
 
 Detection runs at each session start, in priority order: an explicit `FABLE_ORCH_PROFILE=fable|opus` pin, then the SessionStart payload's model, then **the default model `/model` wrote to `settings.json`** (so an Opus default is honored even when the harness omits the payload model on a resume/compact — the case that used to fall back to Fable), then the last model this session saw. A mid-session `/model` switch still only takes effect at the next session start (SessionStart is the only injection point) — but the settings fallback makes that next start reliable. To pin the chair regardless of detection, set `FABLE_ORCH_PROFILE=opus` while you ride out the Fable limit, `fable` (or unset) when it resets.
+
+**Teammates never get the profile.** Named agent-teams workers are full sessions and fire SessionStart too — but the profile is written for the chair alone: delivered to a worker it says "you are the orchestrator" and invites it to spawn subagents of its own, inverting the discipline (measured in the wild: 172 of 270 injected sessions were teammates). The injector runs the same teammate detection as the close guard — `--agent-id` on the nearest `claude` ancestor — and skips the injection while still writing the session marker, so every other guard keeps working. `FABLE_ORCH_TEAMMATE_INJECT=1` restores the old inject-everyone behaviour.
 
 ### 2 · A Requirements Ledger
 
@@ -228,6 +233,7 @@ Set these in `~/.claude/settings.json` under `"env"`.
 │ LEDGER_GUARD_THRESHOLD        │ 1500               │ spawn-guard gate (chars)                   │
 │ FABLE_ORCH_PROFILE            │ auto               │ pin the chair profile: auto | fable | opus │
 │ FABLE_ORCH_TEAMMATE_STOP      │ (off)              │ 1 lets the close guard hold teammates too  │
+│ FABLE_ORCH_TEAMMATE_INJECT    │ (off)              │ 1 injects the profile into teammates too   │
 │ LEDGER_GUARD_TASKS            │ 3                  │ 3rd ledgerless tracker task denied; 0 off  │
 │ LEDGER_GUARD_STOP_MODE        │ once-per-session   │ every-turn restores per-turn blocking      │
 │ FABLE_ORCH_METRICS            │ (on)               │ 0 disables local metrics logging           │
