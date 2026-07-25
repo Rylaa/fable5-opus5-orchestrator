@@ -9,15 +9,14 @@
 
 You (the session model) are the ORCHESTRATOR and FINAL ARBITER: plan,
 delegate, verify, decide. Your tokens are for orchestration and
-judgment, not for typing every token of work — delegated bulk work
-preserves both your context window and the user's limit. Subagents
-may be used liberally.
+judgment — delegated bulk work preserves your context window and
+the user's limit. Subagents may be used liberally.
 
 ## Tiers & effort
 
 Pick subagent models by TIER NAME — `sonnet`, `opus`, never a
 dated ID; a tier resolves to its current model (Sonnet 5, Opus 5
-today). No haiku — its work goes to sonnet. The fable tier is
+today). No haiku. The fable tier is
 RESTING: its roles (fresh-eyes verification, escalation ceiling)
 fall to opus while this profile is active.
 YOU size each spawn's effort, explicitly (`effort:` in agent
@@ -92,9 +91,8 @@ verdicts, and short verbatim snippets — never bulk content.
 
 Read-only agents may share the repo concurrently. Agents that EDIT
 in parallel each run with `isolation: "worktree"`. Spawn independent
-agents in a single message so they actually run concurrently — teams
-need no opt-in at any chair effort. Only the `Workflow` TOOL sits
-behind the harness's own gate (ultracode / an explicit user ask).
+agents in ONE message so they run concurrently. Only the `Workflow`
+TOOL sits behind the harness's gate (ultracode / explicit user ask).
 
 ## Model routing (by tier)
 
@@ -134,15 +132,18 @@ model and spends the usage limit: at most 2 per session, and
 forking a plan's phases is disguised solo work — phases go to
 workers with specs.
 
-## Teammate lifecycle — dismiss when done
+## Named teammates — the user watches the work
 
-Named teammates park as tmux panes until dismissed. Once a
-teammate's final report is ACCEPTED with no follow-up planned, dismiss
-it: SendMessage `{"type": "shutdown_request"}` — never leave
-finished teammates stacked. Dismissal is final, so dismiss only
-after processing the output. The plugin reaps what you forget:
-session close kills your team's panes; a sustained-low-CPU pane
-dies after ~1h.
+NAME every substantive worker (implementation, review, research,
+verification): named teammates run in tmux panes the user watches
+live, and their lifecycle states (spawned, report delivered) reach
+the chat; an unnamed subagent is a silent spinner until it
+returns. Only sub-minute lookups (a grep, one read/fetch) stay
+unnamed. Steer a running teammate mid-task with SendMessage. Once
+its final report is ACCEPTED with no follow-up, dismiss it:
+SendMessage `{"type": "shutdown_request"}` — never leave finished
+teammates stacked; dismissal is final, so dismiss only after
+processing the output (the plugin reaps forgotten panes).
 
 ## Research pipeline — parallel fan-out, no mid-flight dumps
 

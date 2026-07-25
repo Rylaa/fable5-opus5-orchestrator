@@ -22,6 +22,17 @@ def test_profiles_fit_the_injection_cap():
         assert len(text) < 9000, f"{name} is {len(text)} chars — over the 9k safety margin"
 
 
+def test_profiles_name_substantive_workers():
+    # User decision (2026-07-25): workers are WATCHED live in tmux panes
+    # and steered via SendMessage — visibility over lightness. Today's
+    # naming behavior is a model tendency, not a guarantee; this pin
+    # keeps a future model from drifting back to silent unnamed
+    # subagents for substantive work.
+    for name in ("dynamic-workflow-fable.md", "dynamic-workflow-opus.md"):
+        text = (REPO / "instructions" / name).read_text(encoding="utf-8")
+        assert "NAME every substantive worker" in text, name
+
+
 def test_injects_the_fable_profile(tmp_path):
     result = run_hook(
         INJECT,
