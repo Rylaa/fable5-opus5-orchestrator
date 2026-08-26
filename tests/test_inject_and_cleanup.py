@@ -49,10 +49,11 @@ def test_cores_stay_on_the_token_diet():
     # moved the detail to the playbook skill, which loads on demand —
     # the core is a summary now, and this pin keeps it one.
     #
-    # v0.16.0 raised the pin from 4000 to 4400 to seat Rule 0.5: the
-    # cores were at 3744/3781 and the clarify summary is ~370 chars, so
-    # the old pin would have passed only with no headroom left. 4.4k is
-    # still far under the 10k hook cap that made this a pin at all.
+    # v0.16.0 raised the pin from 4000 to 4400 to seat Rule 0.5. The
+    # cores were at 3744/3781 and the rule added ~370 chars, which put
+    # the opus core OVER the old 4000 pin — the raise was required, not
+    # a comfort margin. 4.4k is still far under the 10k hook cap that
+    # made this a pin at all.
     for name in CORES:
         text = _instr(name)
         assert len(text) < 4400, f"{name} is {len(text)} chars — over the 4.4k core diet"

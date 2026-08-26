@@ -120,18 +120,100 @@ def repo_dir(tmp_path):
 # non-empty `## Clarified` section, and every test that is about the
 # LEDGER gates rather than the clarify gate needs one to get past it.
 CLARIFIED = "## Clarified\n- Q1: scope -> the whole thing\n\n"
+CLARIFIED_HEADING = r"^[ \t]{0,3}#{1,6}[ \t]*clarified\b"
+
+SPAWN_GUARD = "ledger_guard_spawn.py"
+LONG = "x" * 2000       # above the default 1500 gate
+VERY_LONG = "x" * 5000
 
 
-def write_ledger(root, body="- [ ] 1. item\n", clarified=True):
-    """Write .workflow/LEDGER.md, clarified unless the test says otherwise.
+def _ensure_record(body):
+    """Prepend a `## Clarified` record unless the body already has one.
 
-    `clarified=False` (or a body that already carries the heading)
-    leaves the section off, which is what the clarify-gate tests want.
+    The scan matches the GUARD's rule — any heading level, either
+    case — not a literal `## Clarified`, so a body written as
+    `### clarified` is not silently given a second section.
     """
+    if re.search(CLARIFIED_HEADING, body, flags=re.M | re.I):
+        return body
+    return CLARIFIED + body
+
+
+def write_ledger(root, body="- [ ] 1. item\n", ensure_clarified=True):
+    """Write .workflow/LEDGER.md.
+
+    `ensure_clarified=True` (the default) guarantees the file carries a
+    clarify record: one is prepended only when the body has none, so a
+    body that already supplies its own is left exactly as written.
+    Pass False to write the body verbatim — what the clarify-gate tests
+    need, since an absent record is the thing under test.
+    """
+    return write_named_ledger(root, "LEDGER.md", body,
+                              ensure_clarified=ensure_clarified)
+
+
+def write_named_ledger(root, name, body="- [ ] 1. item\n", age=None,
+                       ensure_clarified=True):
+    """The same, under an arbitrary LEDGER*.md name, optionally aged."""
     d = root / ".workflow"
     d.mkdir(parents=True, exist_ok=True)
-    if clarified and not re.search(r"^[ \t]{0,3}#{1,6}[ \t]*clarified\b",
-                                   body, flags=re.M | re.I):
-        body = CLARIFIED + body
-    (d / "LEDGER.md").write_text(body, encoding="utf-8")
-    return d / "LEDGER.md"
+    path = d / name
+    path.write_text(_ensure_record(body) if ensure_clarified else body,
+                    encoding="utf-8")
+    if age is not None:
+        os.utime(path, (age, age))
+    return path
+
+
+# --- payloads and assertions shared across the guard test modules ---
+
+def spawn_payload(repo, prompt=LONG, tool="Agent", **extra):
+    tool_input = {"prompt": prompt}
+    tool_input.update(extra.pop("tool_input", {}))
+    payload = {
+        "tool_name": tool,
+        "tool_input": tool_input,
+        "cwd": str(repo),
+        "session_id": "test-session",
+    }
+    payload.update(extra)
+    return payload
+
+
+def task_payload(repo, session="task-guard-session"):
+    payload = {
+        "tool_name": "TaskCreate",
+        "tool_input": {"subject": "Faz N", "description": "d", "activeForm": "a"},
+        "cwd": str(repo),
+    }
+    if session is not None:
+        payload["session_id"] = session
+    return payload
+
+
+def run_tasks(repo, tmp, n, session="task-guard-session", env_extra=None):
+    """n TaskCreate calls sharing one sidecar tempdir; returns the outputs."""
+    return [
+        run_hook(SPAWN_GUARD, task_payload(repo, session),
+                 env_extra=env_extra, tmpdir=tmp)
+        for _ in range(n)
+    ]
+
+
+def is_deny(result):
+    return (
+        result is not None
+        and result["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
+        and result["hookSpecificOutput"]["permissionDecision"] == "deny"
+    )
+
+
+def reason(result):
+    return result["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def write_marker(tmp, started, session="test-session"):
+    """The injector's session marker — arms the stale-ledger check."""
+    marker = tmp / f"fable-orch-model-{session}.json"
+    marker.write_text(json.dumps({"started": started}), encoding="utf-8")
+    return marker

@@ -237,21 +237,9 @@ def guard_task_create(data):
         _metric("tasks_suppressed", session_id, count=count, blocker=blocker)
         return
 
-    if blocker == "unclarified":
-        _metric("tasks_clarify_deny", session_id, count=count, threshold=limit)
-        _deny(_clarify_reason(
-            ledger,
-            f"this is tracker task #{count} this session — multi-phase work — but",
-        ))
-        return
-
-    _metric("tasks_deny", session_id, count=count, threshold=limit,
-            stale=blocker == "stale")
-    _deny(
-        f"LEDGER GUARD: this is tracker task #{count} this session — "
-        "multi-phase work — but no active ledger exists in any "
-        ".workflow/ from the working directory up to the repo root"
-        f"{_stale_note(ledger, blocker)}. "
+    _refuse(
+        blocker, ledger,
+        f"this is tracker task #{count} this session — multi-phase work — but",
         "Rule 0's hard cap: work that needs a task list of 3+ items is "
         "OVER the orchestration threshold, and an approved plan is NOT "
         "an exemption. Write the Requirements Ledger to "
@@ -260,7 +248,9 @@ def guard_task_create(data):
         "`- [ ] N. <item>` lines — and delegate implementation to sonnet "
         "workers citing ledger items instead of implementing the phases "
         "yourself. Re-issue this task afterwards — this reminder fires "
-        "once per session."
+        "once per session.",
+        ("tasks_deny", "tasks_clarify_deny"), session_id,
+        count=count, threshold=limit,
     )
 
 
@@ -613,6 +603,27 @@ def _clarify_reason(ledger, lead):
     )
 
 
+def _refuse(blocker, ledger, lead, tail, events, session_id, **fields):
+    """Emit the deny for `blocker` — message and metric chosen by kind.
+
+    Both gates used to hand-roll this three-way dispatch, and the
+    LEDGER GUARD preamble was written out twice. ledger_state() was
+    introduced to stop exactly this drift one layer down; the same
+    duplication had reappeared one layer up. `events` is
+    (ledger_event, clarify_event).
+    """
+    if blocker == "unclarified":
+        _metric(events[1], session_id, **fields)
+        _deny(_clarify_reason(ledger, lead))
+        return
+    _metric(events[0], session_id, stale=blocker == "stale", **fields)
+    _deny(
+        f"LEDGER GUARD: {lead} no active ledger exists in any .workflow/ "
+        f"from the working directory up to the repo root"
+        f"{_stale_note(ledger, blocker)}. {tail}"
+    )
+
+
 def _deny(reason):
     print(json.dumps({
         "hookSpecificOutput": {
@@ -660,24 +671,10 @@ def _guard(data):
                 tool=data.get("tool_name") or "")
         return
 
-    if blocker == "unclarified":
-        _metric("clarify_deny", session_id,
-                chars=len(text), threshold=limit,
-                tool=data.get("tool_name") or "")
-        _deny(_clarify_reason(
-            ledger,
-            f"this looks like a detailed delegation ({what} > {limit} chars) but",
-        ))
-        return
-
-    _metric("spawn_deny", session_id,
-            chars=len(text), threshold=limit,
-            tool=data.get("tool_name") or "", stale=blocker == "stale")
-    _deny(
-        f"LEDGER GUARD: this looks like a detailed delegation "
-        f"({what} > {limit} chars) but no active ledger exists in "
-        "any .workflow/ from the working directory up to the repo root"
-        f"{_stale_note(ledger, blocker)}. Per Dynamic Workflow Rules 0.5 "
+    _refuse(
+        blocker, ledger,
+        f"this looks like a detailed delegation ({what} > {limit} chars) but",
+        "Per Dynamic Workflow Rules 0.5 "
         "and 1, write ./.workflow/LEDGER.md with BOTH parts before you "
         "re-spawn: a `## Clarified` section holding the answers you got "
         "from the user (plain bullets, not checkboxes), then the numbered "
@@ -685,7 +682,9 @@ def _guard(data):
         "the first part is denied again by the clarify gate. Then re-spawn "
         "citing which ledger items each agent covers. If this is genuinely "
         "a small single-phase task, do it directly; if it is multi-phase, "
-        "write the ledger and delegate — never keep multi-phase work solo."
+        "write the ledger and delegate — never keep multi-phase work solo.",
+        ("spawn_deny", "clarify_deny"), session_id,
+        chars=len(text), threshold=limit, tool=data.get("tool_name") or "",
     )
 
 

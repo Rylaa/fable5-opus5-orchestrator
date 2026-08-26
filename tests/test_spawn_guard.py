@@ -1,39 +1,20 @@
 import json
 import time
 
-from conftest import CLARIFIED, run_hook, write_ledger
-
-SCRIPT = "ledger_guard_spawn.py"
-LONG = "x" * 2000       # above the default 1500 gate
-VERY_LONG = "x" * 5000
-
-
-def spawn_payload(repo, prompt=LONG, tool="Agent", **extra):
-    tool_input = {"prompt": prompt}
-    tool_input.update(extra.pop("tool_input", {}))
-    payload = {
-        "tool_name": tool,
-        "tool_input": tool_input,
-        "cwd": str(repo),
-        "session_id": "test-session",
-    }
-    payload.update(extra)
-    return payload
-
-
-def is_deny(result):
-    return (
-        result is not None
-        and result["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
-        and result["hookSpecificOutput"]["permissionDecision"] == "deny"
-    )
-
-
-def write_marker(tmp, started, session="test-session"):
-    """The injector's session marker — arms the stale-ledger check."""
-    marker = tmp / f"fable-orch-model-{session}.json"
-    marker.write_text(json.dumps({"started": started}), encoding="utf-8")
-    return marker
+from conftest import (
+    CLARIFIED,
+    LONG,
+    SPAWN_GUARD as SCRIPT,
+    VERY_LONG,
+    is_deny,
+    run_hook,
+    run_tasks,
+    spawn_payload,
+    task_payload,
+    write_ledger,
+    write_marker,
+    write_named_ledger,
+)
 
 
 def test_short_prompt_passes(repo_dir):
@@ -125,22 +106,11 @@ def test_upward_search_stops_at_home(tmp_path):
     assert is_deny(run_hook(SCRIPT, spawn_payload(wd), env_extra={"HOME": str(home)}))
 
 
-def _write_named_ledger(root, name, body="- [ ] 1. item\n", age=None):
-    import os as _os
-    d = root / ".workflow"
-    d.mkdir(parents=True, exist_ok=True)
-    p = d / name
-    p.write_text(CLARIFIED + body, encoding="utf-8")
-    if age is not None:
-        _os.utime(p, (age, age))
-    return p
-
-
 def test_per_task_ledger_name_satisfies_the_gate(repo_dir):
     # Measured in the wild: 42 of 56 real ledger files carried a
     # per-task name and were invisible to the guards. Any LEDGER*.md
     # counts now.
-    _write_named_ledger(repo_dir, "LEDGER-blowup-onboarding.md")
+    write_named_ledger(repo_dir, "LEDGER-blowup-onboarding.md")
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
 
@@ -148,14 +118,14 @@ def test_ledger_about_archives_still_counts(repo_dir):
     # "archive" retires a ledger only as the trailing segment. A LIVE
     # ledger whose TOPIC is archiving must not be mistaken for a
     # retired one.
-    _write_named_ledger(repo_dir, "LEDGER-archive-migration.md")
+    write_named_ledger(repo_dir, "LEDGER-archive-migration.md")
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
 
 def test_lowercase_ledger_name_counts(repo_dir):
     # macOS is case-insensitive, so the old literal path matched
     # `ledger.md`. Widening the search must not lose that.
-    _write_named_ledger(repo_dir, "ledger.md")
+    write_named_ledger(repo_dir, "ledger.md")
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
 
@@ -184,7 +154,7 @@ def test_separator_forms_all_count(repo_dir):
 def test_archive_suffixed_ledger_does_not_satisfy_the_gate(repo_dir):
     # Renaming to *-archive.md is the documented way to retire a ledger;
     # an archived one must not keep the gates disarmed.
-    _write_named_ledger(repo_dir, "LEDGER-old-topic-archive.md")
+    write_named_ledger(repo_dir, "LEDGER-old-topic-archive.md")
     assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
 
 
@@ -192,9 +162,9 @@ def test_most_recent_ledger_wins(repo_dir, tmp_path):
     # A directory can hold a stale closed LEDGER.md next to a live
     # per-task one (seen in ad-intel-saas). The live one decides.
     write_marker(tmp_path, time.time())
-    _write_named_ledger(repo_dir, "LEDGER.md", "- [x] 1. done\n",
+    write_named_ledger(repo_dir, "LEDGER.md", "- [x] 1. done\n",
                         age=time.time() - 7200)
-    _write_named_ledger(repo_dir, "LEDGER-F4-backend.md", "- [ ] 1. open\n")
+    write_named_ledger(repo_dir, "LEDGER-F4-backend.md", "- [ ] 1. open\n")
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG),
                     tmpdir=tmp_path) is None
 
@@ -204,25 +174,6 @@ def test_malformed_input_never_blocks():
 
 
 # --- TaskCreate gate: the solo path the spawn gates can't see ---
-
-def task_payload(repo, session="task-guard-session"):
-    payload = {
-        "tool_name": "TaskCreate",
-        "tool_input": {"subject": "Faz N", "description": "d", "activeForm": "a"},
-        "cwd": str(repo),
-    }
-    if session is not None:
-        payload["session_id"] = session
-    return payload
-
-
-def run_tasks(repo, tmp, n, session="task-guard-session", env_extra=None):
-    """n TaskCreate calls sharing one sidecar tempdir; returns the outputs."""
-    return [
-        run_hook(SCRIPT, task_payload(repo, session), env_extra=env_extra, tmpdir=tmp)
-        for _ in range(n)
-    ]
-
 
 def test_first_two_tasks_pass_third_denied_once(repo_dir, tmp_path):
     results = run_tasks(repo_dir, tmp_path, 4)

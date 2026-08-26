@@ -6,28 +6,35 @@ Workers cannot reach the user, so an ambiguity that survives into a
 spawn prompt is a guess that ships — the `## Clarified` section is
 where the chair spends that ambiguity instead.
 """
-from conftest import CLARIFIED, run_hook, write_ledger
-from test_spawn_guard import (
+import time
+
+from conftest import (
+    CLARIFIED,
     LONG,
+    SPAWN_GUARD as SCRIPT,
     VERY_LONG,
     is_deny,
+    reason,
+    run_hook,
     run_tasks,
     spawn_payload,
     task_payload,
+    write_ledger,
     write_marker,
 )
-import time
 
-SCRIPT = "ledger_guard_spawn.py"
 ITEMS = "- [ ] 1. item\n"
 
 
-def reason(result):
-    return result["hookSpecificOutput"]["permissionDecisionReason"]
+def write_raw_ledger(repo, body=ITEMS):
+    """Write the body EXACTLY as given — no record prepended.
 
-
-def unclarified(repo, body=ITEMS):
-    return write_ledger(repo, body, clarified=False)
+    Named for what it does, not for what the gate will make of it:
+    several of these bodies supply their own `## Clarified` and are
+    scored as clarified, which a helper called `unclarified` would
+    have contradicted right beside the assertion that depends on it.
+    """
+    return write_ledger(repo, body, ensure_clarified=False)
 
 
 # --- the gate itself ---
@@ -38,7 +45,7 @@ def test_clarified_ledger_passes(repo_dir):
 
 
 def test_unclarified_ledger_denied(repo_dir):
-    unclarified(repo_dir)
+    write_raw_ledger(repo_dir)
     result = run_hook(SCRIPT, spawn_payload(repo_dir))
     assert is_deny(result)
     assert "CLARIFY GUARD" in reason(result)
@@ -48,32 +55,32 @@ def test_unclarified_ledger_denied(repo_dir):
 def test_heading_alone_is_not_a_record(repo_dir):
     # A chair that types the header and spawns anyway has clarified
     # nothing — the section has to carry content.
-    unclarified(repo_dir, "## Clarified\n\n" + ITEMS)
+    write_raw_ledger(repo_dir, "## Clarified\n\n" + ITEMS)
     result = run_hook(SCRIPT, spawn_payload(repo_dir))
     assert is_deny(result) and "CLARIFY GUARD" in reason(result)
 
 
 def test_empty_section_followed_by_heading_denied(repo_dir):
-    unclarified(repo_dir, "## Clarified\n\n## Items\n" + ITEMS)
+    write_raw_ledger(repo_dir, "## Clarified\n\n## Items\n" + ITEMS)
     assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
 
 
 def test_section_at_end_of_file_with_content_passes(repo_dir):
-    unclarified(repo_dir, ITEMS + "\n## Clarified\n- Q1: scope -> all of it\n")
+    write_raw_ledger(repo_dir, ITEMS + "\n## Clarified\n- Q1: scope -> all of it\n")
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
 
 def test_heading_level_and_case_are_free(repo_dir):
     # The rule is about the record existing, not markdown depth.
     for heading in ("## Clarified", "### clarified", "###### CLARIFIED"):
-        unclarified(repo_dir, f"{heading}\n- No ambiguity: request is literal\n" + ITEMS)
+        write_raw_ledger(repo_dir, f"{heading}\n- No ambiguity: request is literal\n" + ITEMS)
         assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None, heading
 
 
 def test_no_ambiguity_line_satisfies_the_gate(repo_dir):
     # The documented escape for a genuinely literal request: one line,
     # not a skipped section.
-    unclarified(repo_dir, "## Clarified\n- No ambiguity: rename is exact\n" + ITEMS)
+    write_raw_ledger(repo_dir, "## Clarified\n- No ambiguity: rename is exact\n" + ITEMS)
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
 
@@ -87,7 +94,7 @@ def test_crlf_ledger_still_reads_as_clarified(repo_dir):
 def test_lookalike_heading_does_not_satisfy(repo_dir):
     # "Clarifications pending" is not the record; the word has to be
     # the whole heading token.
-    unclarified(repo_dir, "## Clarifying later\n- soon\n" + ITEMS)
+    write_raw_ledger(repo_dir, "## Clarifying later\n- soon\n" + ITEMS)
     assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
 
 
@@ -95,18 +102,18 @@ def test_lookalike_heading_does_not_satisfy(repo_dir):
 
 def test_short_prompt_still_passes_unclarified(repo_dir):
     # Quick lookups were never gated and still are not.
-    unclarified(repo_dir)
+    write_raw_ledger(repo_dir)
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt="where is the config")) is None
 
 
 def test_fork_still_exempt(repo_dir):
-    unclarified(repo_dir)
+    write_raw_ledger(repo_dir)
     payload = spawn_payload(repo_dir, prompt=VERY_LONG, tool_input={"subagent_type": "fork"})
     assert run_hook(SCRIPT, payload) is None
 
 
 def test_workflow_script_gated_on_clarification(repo_dir):
-    unclarified(repo_dir)
+    write_raw_ledger(repo_dir)
     payload = spawn_payload(repo_dir, tool="Workflow")
     payload["tool_input"] = {"script": "y" * 5000}
     result = run_hook(SCRIPT, payload)
@@ -114,7 +121,7 @@ def test_workflow_script_gated_on_clarification(repo_dir):
 
 
 def test_threshold_env_still_applies(repo_dir):
-    unclarified(repo_dir)
+    write_raw_ledger(repo_dir)
     assert run_hook(
         SCRIPT, spawn_payload(repo_dir, prompt=LONG),
         env_extra={"LEDGER_GUARD_THRESHOLD": "3000"},
@@ -142,7 +149,7 @@ def test_stale_clarified_ledger_reports_staleness(repo_dir, tmp_path):
 # --- the tracker-task gate carries the same rule ---
 
 def test_third_task_on_unclarified_ledger_denied(repo_dir, tmp_path):
-    unclarified(repo_dir)
+    write_raw_ledger(repo_dir)
     results = run_tasks(repo_dir, tmp_path, 4)
     assert results[0] is None and results[1] is None
     assert is_deny(results[2])
@@ -158,7 +165,7 @@ def test_tasks_pass_freely_on_a_clarified_ledger(repo_dir, tmp_path):
 # --- the escape hatch ---
 
 def test_clarify_guard_disabled_by_zero(repo_dir):
-    unclarified(repo_dir)
+    write_raw_ledger(repo_dir)
     assert run_hook(
         SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG),
         env_extra={"LEDGER_GUARD_CLARIFY": "0"},
@@ -166,7 +173,7 @@ def test_clarify_guard_disabled_by_zero(repo_dir):
 
 
 def test_clarify_guard_only_zero_disables(repo_dir):
-    unclarified(repo_dir)
+    write_raw_ledger(repo_dir)
     for value in ("", "1", "off", "false"):
         result = run_hook(
             SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG),
@@ -188,19 +195,23 @@ def test_malformed_input_never_blocks():
     assert run_hook(SCRIPT, raw="{not json") is None
 
 
-def test_binary_ledger_never_crashes(repo_dir):
+def test_binary_ledger_denies_rather_than_crashing(repo_dir):
+    # `result is None or is_deny(result)` was the entire output space —
+    # a check that could not fail. The real behaviour: the junk bytes
+    # decode to replacement characters ON the heading line, so the
+    # heading does not match and the gate denies.
     d = repo_dir / ".workflow"
     d.mkdir(parents=True, exist_ok=True)
     (d / "LEDGER.md").write_bytes(b"\xff\xfe\x00## Clarified\n- Q1: x\n\n- [ ] 1. open\n")
     result = run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG))
-    assert result is None or is_deny(result)
+    assert is_deny(result) and "CLARIFY GUARD" in reason(result)
 
 
 def test_clarified_constant_matches_the_documented_shape(repo_dir):
     # The fixture and the skill have to agree on what a record looks
     # like, or the suite passes on a shape the plugin never ships.
     assert CLARIFIED.startswith("## Clarified\n")
-    unclarified(repo_dir, CLARIFIED + ITEMS)
+    write_raw_ledger(repo_dir, CLARIFIED + ITEMS)
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
 
@@ -215,7 +226,7 @@ def test_any_checkbox_ends_the_section(repo_dir):
     for bullet in ("- [ ] 1. item", "* [x] 2. done", "+ [~] 3. deferred: ok",
                    "- [x] V. verified", "- [ ] fix login", "- [x] Q1: beside it",
                    "-  [ ] 1. two spaces", "- [>] 1. odd marker"):
-        unclarified(repo_dir, f"## Clarified\n\n{bullet}\n")
+        write_raw_ledger(repo_dir, f"## Clarified\n\n{bullet}\n")
         result = run_hook(SCRIPT, spawn_payload(repo_dir))
         assert is_deny(result), bullet
         assert "PLAIN BULLETS" in reason(result), bullet
@@ -225,7 +236,7 @@ def test_open_checkbox_answers_would_break_the_close_guard(repo_dir):
     # `- [ ] Q2: still waiting` passed the clarify gate while matching
     # OPEN_ITEM_RE, so the ledger could never go stale and every close
     # was held forever. Ending the section on any checkbox closes it.
-    unclarified(repo_dir,
+    write_raw_ledger(repo_dir,
                 "## Clarified\n- [ ] Q2: still waiting on the user\n\n" + ITEMS)
     assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
 
@@ -234,19 +245,19 @@ def test_sub_heading_stays_inside_the_section(repo_dir):
     # The protocol appends later rounds, and `### Round 1` is how a
     # chair files them. Ending the section at ANY heading denied a
     # ledger full of answers, with nothing in the message to act on.
-    unclarified(repo_dir,
+    write_raw_ledger(repo_dir,
                 "## Clarified\n### Round 1\n- Q1: replace it? -> beside it\n\n" + ITEMS)
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
 
 def test_same_level_heading_ends_the_section(repo_dir):
-    unclarified(repo_dir, "## Clarified\n\n## Items\n- something\n" + ITEMS)
+    write_raw_ledger(repo_dir, "## Clarified\n\n## Items\n- something\n" + ITEMS)
     assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
 
 
 def test_setext_heading_does_not_count_as_content(repo_dir):
     # The other markdown heading syntax ends the section too.
-    unclarified(repo_dir, "## Clarified\n\nRequirements\n------------\n" + ITEMS)
+    write_raw_ledger(repo_dir, "## Clarified\n\nRequirements\n------------\n" + ITEMS)
     assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
 
 
@@ -254,7 +265,7 @@ def test_divider_under_the_one_line_escape_is_fine(repo_dir):
     # `- No ambiguity: <why>` is the line the deny text asks for. A
     # `---` after it is a thematic break, not a setext underline, and
     # denying it looped the chair against its own instructions.
-    unclarified(repo_dir,
+    write_raw_ledger(repo_dir,
                 "## Clarified\n- No ambiguity: the rename is exact\n---\n\n" + ITEMS)
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
@@ -262,21 +273,21 @@ def test_divider_under_the_one_line_escape_is_fine(repo_dir):
 def test_punctuation_alone_is_not_an_answer(repo_dir):
     # Typing the heading and a divider is the "clarified nothing" case.
     for filler in ("---", "***", "___", "<!-- TODO fill this in -->", "|  |"):
-        unclarified(repo_dir, f"## Clarified\n\n{filler}\n\n" + ITEMS)
+        write_raw_ledger(repo_dir, f"## Clarified\n\n{filler}\n\n" + ITEMS)
         assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir))), filler
 
 
 def test_fenced_example_is_not_a_record(repo_dir):
     # The skill's own markdown example of the section must not satisfy
     # the gate it is teaching — same rule as the close guard's fences.
-    unclarified(repo_dir,
+    write_raw_ledger(repo_dir,
                 "## Notes\nCopy this shape:\n\n```markdown\n## Clarified\n"
                 "- Q1: <question> -> <answer>\n```\n\n" + ITEMS)
     assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
 
 
 def test_fenced_example_beside_a_real_record_passes(repo_dir):
-    unclarified(repo_dir,
+    write_raw_ledger(repo_dir,
                 "## Clarified\n- Q1: scope -> all of it\n\n"
                 "```markdown\n## Clarified\n- Q1: <question>\n```\n\n" + ITEMS)
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
@@ -284,13 +295,13 @@ def test_fenced_example_beside_a_real_record_passes(repo_dir):
 
 def test_a_filled_section_below_an_empty_one_passes(repo_dir):
     # The protocol appends later answers, so every heading is checked.
-    unclarified(repo_dir,
+    write_raw_ledger(repo_dir,
                 "## Clarified\n\n" + ITEMS + "\n## Clarified\n- Q2: round two -> yes\n")
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
 
 def test_h1_clarified_counts(repo_dir):
-    unclarified(repo_dir, "# Clarified\n- Q1: scope -> all of it\n\n" + ITEMS)
+    write_raw_ledger(repo_dir, "# Clarified\n- Q1: scope -> all of it\n\n" + ITEMS)
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
 
@@ -298,7 +309,7 @@ def test_h1_clarified_counts(repo_dir):
 
 def test_clarify_nudge_does_not_spend_the_ledger_nudge(repo_dir, tmp_path):
     import shutil
-    unclarified(repo_dir)
+    write_raw_ledger(repo_dir)
     results = run_tasks(repo_dir, tmp_path, 3)
     assert is_deny(results[2])
     assert "CLARIFY GUARD" in results[2]["hookSpecificOutput"]["permissionDecisionReason"]
@@ -322,7 +333,7 @@ def test_clarify_metrics_reach_the_stats_summary(repo_dir, tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     env = {"FABLE_ORCH_METRICS": "1", "HOME": str(home)}
-    unclarified(repo_dir)
+    write_raw_ledger(repo_dir)
     run_hook(SCRIPT, spawn_payload(repo_dir), env_extra=env, tmpdir=tmp_path)
     for _ in range(3):
         run_hook(SCRIPT, task_payload(repo_dir), env_extra=env, tmpdir=tmp_path)
@@ -346,13 +357,13 @@ def test_clarify_metrics_reach_the_stats_summary(repo_dir, tmp_path):
 # --- regressions from the v0.16.0 review, round two ---
 
 def test_tilde_fence_is_stripped_like_a_backtick_one(repo_dir):
-    unclarified(repo_dir,
+    write_raw_ledger(repo_dir,
                 "## Notes\n~~~markdown\n## Clarified\n- Q1: <q> -> <a>\n~~~\n\n" + ITEMS)
     assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
 
 
 def test_longer_fence_wraps_a_shorter_one(repo_dir):
-    unclarified(repo_dir,
+    write_raw_ledger(repo_dir,
                 "## Notes\n````markdown\n```\n## Clarified\n- Q1: <q>\n```\n````\n\n" + ITEMS)
     assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
 
@@ -403,7 +414,7 @@ def test_clarify_deny_offers_the_archive_remedy(repo_dir):
     # An abandoned ledger with one never-closed item is never "stale",
     # so it falls through to the clarify deny — which used to tell the
     # chair to write this session's answers into a foreign file.
-    unclarified(repo_dir, "- [ ] 2. something from six months ago\n")
+    write_raw_ledger(repo_dir, "- [ ] 2. something from six months ago\n")
     result = run_hook(SCRIPT, spawn_payload(repo_dir))
     assert is_deny(result) and "archive" in reason(result).lower()
 
@@ -450,7 +461,7 @@ def test_each_blocker_gets_its_own_free_tasks(repo_dir, tmp_path):
     assert is_deny(results[2])
     assert "LEDGER GUARD" in results[2]["hookSpecificOutput"]["permissionDecisionReason"]
 
-    unclarified(repo_dir)                               # the chair complies
+    write_raw_ledger(repo_dir)                               # the chair complies
     more = run_tasks(repo_dir, tmp_path, 3)
     assert more[0] is None and more[1] is None, "clarify budget started spent"
     assert is_deny(more[2])
@@ -475,9 +486,9 @@ def test_spaceless_heading_ends_a_section_it_could_start(repo_dir):
     # `##Clarified` opens a section, so `##Items` has to be able to
     # close one — otherwise an empty section runs past the ledger's own
     # headings hunting for content.
-    unclarified(repo_dir, "## Clarified\n\n##Items\n" + ITEMS)
+    write_raw_ledger(repo_dir, "## Clarified\n\n##Items\n" + ITEMS)
     assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
-    unclarified(repo_dir, "##Clarified\n- Q1: scope -> all of it\n\n" + ITEMS)
+    write_raw_ledger(repo_dir, "##Clarified\n- Q1: scope -> all of it\n\n" + ITEMS)
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
 
