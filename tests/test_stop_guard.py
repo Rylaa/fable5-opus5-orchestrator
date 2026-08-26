@@ -221,6 +221,34 @@ def test_heartbeat_pane_still_reaped(repo_dir, tmp_path):
     assert "-t %1" in kill_log.read_text(encoding="utf-8")
 
 
+def test_versioned_claude_binary_is_still_a_teammate(repo_dir, tmp_path):
+    # Teammates run as ~/.local/share/claude/versions/2.1.246, whose
+    # BASENAME is `2.1.246`. The sweep tested basename.startswith
+    # ("claude"), skipped every real teammate pane, wrote an empty
+    # state file, and reaped nothing — three teammates sat parked for
+    # 41 hours against a 1-hour threshold.
+    env, kill_log, home = _pane_env(tmp_path)
+    env["FAKE_PS_PANE"] = (
+        "12345 0:05.30 /Users/y/.local/share/claude/versions/2.1.246 "
+        "--agent-id w@session-t --agent-name w")
+    _seed_pane_state(home, cpu=5.0)
+    assert run_hook(SCRIPT, stop_payload(repo_dir), env_extra=env, tmpdir=tmp_path) is None
+    assert kill_log.is_file(), "versioned binary was not recognised as a teammate"
+    assert "-t %1" in kill_log.read_text(encoding="utf-8")
+
+
+def test_wrapper_shell_root_still_spared(repo_dir, tmp_path):
+    # The looser exe check must not start judging a wrapper shell: the
+    # child burns the CPU while the shell's clock stays frozen, so a
+    # live worker would read as parked.
+    env, kill_log, home = _pane_env(tmp_path)
+    env["FAKE_PS_PANE"] = ("12345 0:00.01 sh -c cd /repo && "
+                           "claude --agent-id w@session-t")
+    _seed_pane_state(home, cpu=0.01)
+    assert run_hook(SCRIPT, stop_payload(repo_dir), env_extra=env, tmpdir=tmp_path) is None
+    assert not kill_log.exists()
+
+
 def test_default_server_pane_reaped(repo_dir, tmp_path):
     # Current Claude Code parks teammates in the USER'S default tmux
     # server — the sweep must scan it, and must kill only the pane.

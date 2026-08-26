@@ -12,8 +12,9 @@ def _manifest():
         return json.load(f)["hooks"]
 
 
-def test_all_four_events_registered():
-    assert set(_manifest()) == {"SessionStart", "PreToolUse", "Stop", "SessionEnd"}
+def test_all_five_events_registered():
+    assert set(_manifest()) == {"SessionStart", "PreToolUse", "Stop",
+                                "SessionEnd", "UserPromptSubmit"}
 
 
 def test_every_hook_command_script_exists():

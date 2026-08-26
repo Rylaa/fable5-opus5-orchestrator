@@ -282,6 +282,23 @@ def _cpu_seconds(text):
     return days * 86400 + seconds
 
 
+def _is_claude_exe(path):
+    """True for the claude binary, including the versioned install path.
+
+    Teammates launched from ~/.local/share/claude/versions/2.1.246 have
+    an argv[0] whose BASENAME is `2.1.246`, not `claude`. The idle
+    sweep tested `basename.startswith("claude")`, so it skipped every
+    real teammate pane, wrote an empty state file, and reaped nothing —
+    measured in the wild as three teammates parked for 41 hours with a
+    1-hour threshold configured. `_is_teammate_session` above already
+    knew about the versioned form; this check did not.
+    """
+    base = os.path.basename(path)
+    return (base.startswith("claude")
+            or "claude-code" in path
+            or re.match(r"^\d+\.\d+", base) is not None)
+
+
 def reap_idle_teammates(session_id):
     """Kill teammate panes whose CPU RATE stayed under the parked
     threshold for FABLE_ORCH_TEAMMATE_IDLE_H hours (default 1; 0
@@ -358,8 +375,8 @@ def reap_idle_teammates(session_id):
                 pid, cpu_text, command = bits
                 if pid not in pane_ids or "--agent-id" not in command:
                     continue  # not a teammate pane — never touch it
-                exe = os.path.basename(command.split()[0]) if command.split() else ""
-                if not exe.startswith("claude"):
+                argv0 = command.split()[0] if command.split() else ""
+                if not _is_claude_exe(argv0):
                     # Wrapper-shell root (`sh -c '... && claude ...'`): the
                     # child burns the CPU while the shell's clock stays
                     # frozen — judging idleness by it kills live workers.
@@ -537,7 +554,7 @@ def run_guard(data):
         return
 
     try:
-        with open(ledger, encoding="utf-8", errors="replace") as f:
+        with open(ledger, encoding="utf-8-sig", errors="replace") as f:
             text = f.read()
     except Exception:
         return

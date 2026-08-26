@@ -277,6 +277,17 @@ def main():
                 text = f.read()
         except Exception:
             return  # never break session start
+        # The reply shape rides the FULL core only. A switch delta goes
+        # to a session that already has it, and re-sending costs the
+        # limit the delta exists to protect. Missing file is not fatal:
+        # the profile matters more than the formatting rules.
+        if not switched:
+            try:
+                with open(os.path.join(root, "instructions", "reply-shape.md"),
+                          encoding="utf-8") as f:
+                    text += f.read()
+            except Exception:
+                pass
 
     # Session marker for the guards (best effort; never fatal).
     # `started` marks the session's FIRST start and must survive the

@@ -48,6 +48,18 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/remind_reply_shape.py\"",
+            "timeout": 10,
+            "statusMessage": "Reply shape reminder"
+          }
+        ]
+      }
     ]
   }
 }

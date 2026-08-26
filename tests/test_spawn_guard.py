@@ -315,11 +315,15 @@ def test_parallel_task_creates_deny_exactly_once(repo_dir, tmp_path):
     import os
     import subprocess
     import sys
-    from conftest import SCRIPTS, STRIP_ENV
+    from conftest import SCRIPTS, STRIP_ENV, _chair_ps_dir
 
     env = {k: v for k, v in os.environ.items() if k not in STRIP_ENV}
     env.update({"FABLE_ORCH_METRICS": "0", "FABLE_ORCH_SWARM_CLEANUP": "0",
                 "TMPDIR": str(tmp_path), "TEMP": str(tmp_path), "TMP": str(tmp_path)})
+    # This test builds its own env, so it misses run_hook's ambient
+    # "this is a chair" shim. Without it all 8 hooks race a real `ps`
+    # ancestor walk, and under load the suite went intermittently red.
+    env["PATH"] = _chair_ps_dir() + os.pathsep + env.get("PATH", "")
     payload = json.dumps(task_payload(repo_dir))
     procs = [
         subprocess.Popen([sys.executable, str(SCRIPTS / SCRIPT)],

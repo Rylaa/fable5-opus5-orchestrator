@@ -79,7 +79,11 @@ DEFAULT_TASK_LIMIT = 3
 # permanently non-stale while its close was never held.
 OPEN_ITEM_RE = r"^\s*[-*] \[ \](?:\s.*)?$"
 CLARIFIED_HEADING_RE = r"^[ \t]{0,3}(#{1,6})[ \t]*clarified\b[^\n]*$"
-ATX_HEADING_RE = r"^[ \t]{0,3}(#{1,6})(?:[ \t]|$)"
+# No space required after the hashes, because the heading that OPENS
+# the section does not require one either: `##Clarified` started a
+# section that `##Items` could not end, so an empty section ran on
+# past the ledger's own headings looking for content.
+ATX_HEADING_RE = r"^[ \t]{0,3}(#{1,6})(?!#)"
 SETEXT_UNDERLINE_RE = r"^[ \t]{0,3}(?:=+|-+)[ \t]*$"
 # ANY checkbox ends the Clarified section: the numbered items live
 # directly below it with no heading in between, and a rule that only
@@ -273,7 +277,11 @@ def active_ledger_in(dirpath):
     live ledger whose topic happens to be archives, and it counts.
     Matching is case-insensitive. When several are live the most
     recently modified readable one wins: that is the one this session
-    is working in.
+    is working in. An UNREADABLE ledger never masks a readable
+    sibling, but when it is the only candidate it is returned anyway,
+    and the guards fail open on the read — the documented behaviour.
+    Skipping it here instead produced "no active ledger exists in any
+    .workflow/" about a file that plainly does exist.
     """
     workflow = os.path.join(dirpath, ".workflow")
     try:
@@ -281,6 +289,7 @@ def active_ledger_in(dirpath):
     except OSError:
         return None
     best, best_mtime = None, -1.0
+    unreadable, unreadable_mtime = None, -1.0
     for name in names:
         low = name.lower()
         if not (low.startswith("ledger") and low.endswith(".md")):
@@ -298,16 +307,18 @@ def active_ledger_in(dirpath):
         try:
             if not os.path.isfile(path):
                 continue
-            # An unreadable file must not mask a live sibling by being
-            # newer — the guards could not read it anyway.
-            if not os.access(path, os.R_OK):
-                continue
             mtime = os.path.getmtime(path)
+            # An unreadable file must not mask a live sibling by being
+            # newer — but remember it, in case it is all there is.
+            if not os.access(path, os.R_OK):
+                if mtime > unreadable_mtime:
+                    unreadable, unreadable_mtime = path, mtime
+                continue
         except OSError:
             continue
         if mtime > best_mtime:
             best, best_mtime = path, mtime
-    return best
+    return best or unreadable
 
 
 def find_ledger(start_dir):
@@ -367,7 +378,11 @@ def read_ledger(path):
     open on a ledger that no longer existed.
     """
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
+        # utf-8-sig, not utf-8: an editor that writes a BOM put U+FEFF
+        # in front of a line-1 `## Clarified`, the heading stopped
+        # matching, and the chair was denied every time it rewrote the
+        # very section it already had — a loop with no way out.
+        with open(path, encoding="utf-8-sig", errors="replace") as f:
             return f.read()
     except OSError:
         return None

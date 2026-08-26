@@ -155,6 +155,20 @@ Started `claude` inside tmux? They show up as extra panes: `prefix q` to jump, `
 
 Finished workers are killed automatically — on session end, and on a slow sweep that kills panes sitting under ~1% CPU for an hour. Left alone they pile up: one measured run had 63 orphans holding about 5 GB.
 
+## How answers come out
+
+The plugin ships its own reply rules, so every install gets them — no extra skill to install.
+
+- Next action, command, or path on the first line. Context after.
+- Numbered steps for multi-step work, one action per step.
+- One topic per reply; a second issue is offered separately.
+- Lists cap at five. Estimates in concrete units.
+- No preamble, no recap, no closing pleasantry.
+
+The full rules ([`instructions/reply-shape.md`](instructions/reply-shape.md)) go in once at session start, on top of the profile. A `UserPromptSubmit` hook then adds one line before each answer — rules delivered only at session start decay, and the moment the model composes a reply is the only moment that can still change it. Workers are skipped: their reports follow the 40-line output contract instead.
+
+Turn the per-turn line off with `FABLE_ORCH_REPLY_SHAPE=0`; the session-start rules stay.
+
 ## Settings
 
 All optional, in `~/.claude/settings.json` under `"env"`. The five worth knowing:
@@ -167,6 +181,7 @@ All optional, in `~/.claude/settings.json` under `"env"`. The five worth knowing
 │ LEDGER_GUARD_CLARIFY          │ (on)               │ 0 disables the clarify gate                │
 │ LEDGER_GUARD_TASKS            │ 3                  │ 3rd ledgerless tracker task denied; 0 off  │
 │ FABLE_ORCH_PROFILE            │ auto               │ pin the chair profile: auto | fable | opus │
+│ FABLE_ORCH_REPLY_SHAPE        │ (on)               │ 0 drops the per-turn reply reminder        │
 │ FABLE_ORCH_TEAMMATE_IDLE_H    │ 1                  │ kill worker panes idle ≥ N hours; 0 off    │
 └───────────────────────────────┴────────────────────┴────────────────────────────────────────────┘
 ```

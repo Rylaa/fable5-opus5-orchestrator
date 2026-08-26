@@ -456,3 +456,63 @@ def test_each_blocker_gets_its_own_free_tasks(repo_dir, tmp_path):
     assert is_deny(more[2])
     assert "CLARIFY GUARD" in more[2]["hookSpecificOutput"]["permissionDecisionReason"]
     shutil.rmtree(repo_dir / ".workflow")
+
+
+# --- round-three fixes ---
+
+def test_byte_order_mark_does_not_hide_a_line_one_heading(repo_dir):
+    # An editor that writes a BOM put U+FEFF in front of `## Clarified`,
+    # the heading stopped matching, and the chair was denied every time
+    # it rewrote the section it already had.
+    d = repo_dir / ".workflow"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "LEDGER.md").write_bytes(
+        b"\xef\xbb\xbf## Clarified\n- Q1: scope -> all of it\n\n- [ ] 1. open\n")
+    assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
+
+
+def test_spaceless_heading_ends_a_section_it_could_start(repo_dir):
+    # `##Clarified` opens a section, so `##Items` has to be able to
+    # close one — otherwise an empty section runs past the ledger's own
+    # headings hunting for content.
+    unclarified(repo_dir, "## Clarified\n\n##Items\n" + ITEMS)
+    assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
+    unclarified(repo_dir, "##Clarified\n- Q1: scope -> all of it\n\n" + ITEMS)
+    assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
+
+
+def test_unreadable_ledger_fails_open_instead_of_lying(repo_dir):
+    # Dropping an unreadable file during the scan produced "no active
+    # ledger exists in any .workflow/" about a file that plainly does.
+    # It is selected, the read fails open, and the spawn passes.
+    import os
+    import stat
+    ledger = write_ledger(repo_dir)
+    os.chmod(ledger, 0)
+    try:
+        if os.access(ledger, os.R_OK):          # running as root: no such thing
+            return
+        result = run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG))
+        assert result is None, "an unreadable ledger must not deny"
+    finally:
+        os.chmod(ledger, stat.S_IRUSR | stat.S_IWUSR)
+
+
+def test_unreadable_ledger_does_not_mask_a_readable_sibling(repo_dir):
+    import os
+    import stat
+    d = repo_dir / ".workflow"
+    d.mkdir(parents=True, exist_ok=True)
+    live = d / "LEDGER-live.md"
+    live.write_text("- [ ] 1. open, and no answers here\n", encoding="utf-8")
+    newer = d / "LEDGER-unreadable.md"
+    newer.write_text(CLARIFIED + "- [ ] 1. open\n", encoding="utf-8")
+    os.chmod(newer, 0)
+    try:
+        if os.access(newer, os.R_OK):
+            return
+        # The readable one wins, and it has no `## Clarified` record.
+        result = run_hook(SCRIPT, spawn_payload(repo_dir))
+        assert is_deny(result) and "CLARIFY GUARD" in reason(result)
+    finally:
+        os.chmod(newer, stat.S_IRUSR | stat.S_IWUSR)
