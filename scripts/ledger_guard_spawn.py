@@ -34,6 +34,13 @@ prompt becomes a guess committed to code — the section is where that
 guessing is spent instead. The heading alone does not count; a chair
 that types the header and spawns anyway has clarified nothing.
 
+The same rule again one step later, as a NON-EMPTY `## Approved`
+section: what the chair is about to build, what it is deliberately
+leaving alone, how "done" is observed, and the user's own go. Right
+answers to good questions still leave the wrong build free to be
+approved silently — this is where the chair states its reading and
+waits, instead of delegating on it.
+
 The threshold defaults to 1500 chars — strict on purpose. This
 plugin is built for a Claude Fable 5 chair, where even small
 delegations should carry a ledger: Fable tokens are the scarce
@@ -56,15 +63,32 @@ Configuration (all optional):
                              0 or negative disables the task gate)
     LEDGER_GUARD_CLARIFY=0   disables the Rule 0.5 clarify gate; the
                              ledger gates keep working
+    LEDGER_GUARD_APPROVAL=0  disables the Rule 0.5 approval gate; the
+                             clarify and ledger gates keep working
     FABLE_ORCH_METRICS=0     disables the local metrics log
 """
 import json
 import os
 import re
-import subprocess
 import sys
 import tempfile
 import time
+# Loaded by path (a hook command, a test's spec_from_file_location),
+# so the scripts directory is not always on sys.path already.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from _shared import (
+        metric as _metric,
+        is_teammate_session as _is_teammate_session)
+except Exception:
+    # `_shared.py` ships beside this file. A partial install, a half-copied
+    # plugin directory or an unreadable sibling leaves this hook with no
+    # helpers and therefore no decision it can make. Degrade to nothing at
+    # all: say nothing, deny nothing, block nothing, exit 0. Every hook here
+    # is fail-open by design, and an import error at module scope would be
+    # the one failure that ignores that, killing a turn with a traceback on
+    # every single prompt.
+    sys.exit(0)
 
 try:
     import fcntl
@@ -73,12 +97,31 @@ except ImportError:  # non-POSIX: run unlocked, best effort
 
 DEFAULT_THRESHOLD = 1500
 DEFAULT_TASK_LIMIT = 3
+# One warning budget per KIND of blocker: three separate reminders that
+# say different things, so spending one must never silence another.
+# The COUNT they are spent against is shared — see _bump_task_count.
+TASK_KEYS = ("denied", "denied_clarify", "denied_approval")
 # The close guard's dialect, character for character: `-` and `*` only.
 # A `+` bullet is deliberately outside it, and a guard that counted `+`
 # while the close guard did not would keep a `+`-bulleted ledger
 # permanently non-stale while its close was never held.
 OPEN_ITEM_RE = r"^\s*[-*] \[ \](?:\s.*)?$"
-CLARIFIED_HEADING_RE = r"^[ \t]{0,3}(#{1,6})[ \t]*clarified\b[^\n]*$"
+
+
+def _heading_re(word):
+    """The heading that OPENS a record section, at any level or case.
+
+    ONE builder for both sections: `## Clarified` and `## Approved` are
+    the same shape scanned by the same helpers, and a second
+    hand-written pattern is exactly how the two gates would drift
+    apart — every fenced-example, setext, and spaceless-heading fix
+    below was paid for once already.
+    """
+    return r"^[ \t]{0,3}(#{1,6})[ \t]*" + word + r"\b[^\n]*$"
+
+
+CLARIFIED_HEADING_RE = _heading_re("clarified")
+APPROVED_HEADING_RE = _heading_re("approved")
 # No space required after the hashes, because the heading that OPENS
 # the section does not require one either: `##Clarified` started a
 # section that `##Items` could not end, so an empty section ran on
@@ -97,23 +140,6 @@ CHECKBOX_RE = r"^\s*[-*+][ \t]+\[[^\]]?\]"
 NON_ANSWER_RE = (r"^[ \t]{0,3}(?:(?:[-*_][ \t]*){3,}"
                  r"|<!--.*"
                  r"|\|[ \t|:-]*\|[ \t]*)$")
-
-
-def _metric(event, session_id=None, **extra):
-    """Append one event line to ~/.claude/fable-orch/metrics.jsonl (best effort)."""
-    if (os.environ.get("FABLE_ORCH_METRICS") or "").strip() == "0":
-        return
-    try:
-        d = os.path.join(os.path.expanduser("~"), ".claude", "fable-orch")
-        os.makedirs(d, exist_ok=True)
-        rec = {"ts": round(time.time(), 3), "event": event}
-        if session_id:
-            rec["session"] = str(session_id)[:8]
-        rec.update(extra)
-        with open(os.path.join(d, "metrics.jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps(rec) + "\n")
-    except Exception:
-        pass
 
 
 def threshold():
@@ -153,13 +179,22 @@ def _bump_task_count(path, key="denied"):
     (count, denied_before) or None when the file can't be used.
 
     `key` picks WHICH one-per-session budget is being spent: the
-    missing/stale-ledger nudge ("denied") and the clarify nudge
-    ("denied_clarify") are separate reminders that say different
-    things, so spending one must not silence the other. The COUNT is
-    per key for the same reason — a shared counter meant the blocker
-    that appeared second got none of the documented free tasks, so a
-    chair that obeyed the first nudge was denied again on its very
-    next task.
+    missing/stale-ledger nudge ("denied"), the clarify nudge
+    ("denied_clarify"), and the approval nudge ("denied_approval") are
+    separate reminders that say different things, so spending one must
+    not silence the others.
+
+    The COUNT is per SESSION, not per key: it is the number of tracker
+    tasks this session has created against a ledger that did not
+    satisfy the gates, whichever gate that was. Counting per key gave
+    every blocker its own fresh task_limit() of free tasks, so each
+    gate added to ledger_state bought a solo chair three more — 6-task
+    bursts across the three blockers measured 15 tasks created for 3
+    denies, against a ledger that never came into order. Rule 0's cap
+    is that a task list of 3+ items is ALREADY over the orchestration
+    threshold, so a chair past it does not get a fresh allowance for
+    fixing one thing and not the next: the reminder for the new
+    blocker fires on the next task, and still only once.
     """
     try:
         f = open(path, "a+", encoding="utf-8")
@@ -182,15 +217,20 @@ def _bump_task_count(path, key="denied"):
         if not isinstance(counts, dict):
             counts = {}
         try:
-            count = int(counts.get(key) or 0)
+            own = int(counts.get(key) or 0)
         except (TypeError, ValueError, OverflowError):
-            count = 0
-        count += 1
-        counts = {k: v for k, v in counts.items() if k in ("denied", "denied_clarify")}
-        counts[key] = count
+            own = 0
+        counts = {k: v for k, v in counts.items() if k in TASK_KEYS}
+        counts[key] = own + 1
+        count = 0
+        for k in TASK_KEYS:                    # the session total
+            try:
+                count += int(counts.get(k) or 0)
+            except (TypeError, ValueError, OverflowError):
+                pass
         denied_before = bool(state.get(key))
         deny_now = count >= task_limit() and not denied_before
-        flags = {k: bool(state.get(k)) for k in ("denied", "denied_clarify")}
+        flags = {k: bool(state.get(k)) for k in TASK_KEYS}
         flags[key] = denied_before or deny_now
         try:
             f.seek(0)
@@ -208,7 +248,10 @@ def guard_task_create(data):
     """Deny the Nth unguarded tracker task of a session — once.
 
     Unguarded means the ledger is missing, stale, or carries no
-    `## Clarified` record; the deny text names which. Counting lives
+    `## Clarified` or `## Approved` record; the deny text names which,
+    and each kind of blocker draws its own reminder exactly once.
+    Unguarded tasks are counted TOGETHER, so satisfying one gate and
+    not the next never hands the chair a fresh allowance. Counting lives
     in a per-session sidecar so the gate never leaks across sessions;
     without a session_id there is nothing safe to scope to, so the
     call passes. The denied call creates no task and may simply be
@@ -225,8 +268,10 @@ def guard_task_create(data):
     path = _task_sidecar(session_id)
     if path is None:
         return
-    bumped = _bump_task_count(
-        path, "denied_clarify" if blocker == "unclarified" else "denied")
+    bumped = _bump_task_count(path, {
+        "unclarified": "denied_clarify",
+        "unapproved": "denied_approval",
+    }.get(blocker, "denied"))
     if bumped is None:
         return
     count, denied_before = bumped
@@ -244,12 +289,13 @@ def guard_task_create(data):
         "OVER the orchestration threshold, and an approved plan is NOT "
         "an exemption. Write the Requirements Ledger to "
         "./.workflow/LEDGER.md now — a `## Clarified` section carrying "
-        "the answers you got from the user, then the numbered "
+        "the answers you got from the user, a `## Approved` section "
+        "carrying the plan they signed off on, then the numbered "
         "`- [ ] N. <item>` lines — and delegate implementation to sonnet "
         "workers citing ledger items instead of implementing the phases "
         "yourself. Re-issue this task afterwards — this reminder fires "
         "once per session.",
-        ("tasks_deny", "tasks_clarify_deny"), session_id,
+        ("tasks_deny", "tasks_clarify_deny", "tasks_approval_deny"), session_id,
         count=count, threshold=limit,
     )
 
@@ -404,51 +450,19 @@ def ledger_satisfies(ledger, session_id, text=None):
 TEAMMATE_DETECT_BUDGET = 1.5  # seconds; the walk measures ~5ms in practice
 
 
-def _budget(deadline, cap=5.0):
-    if deadline is None:
-        return cap
-    return max(0.1, min(cap, deadline - time.monotonic()))
-
-
-def _is_teammate_session(max_hops=12):
-    """True when this hook is running inside a named teammate.
-
-    These gates are CHAIR discipline. A teammate cannot reach the user
-    to clarify anything, cannot be given the clarify skill (the
-    injector skips it), and does not own the chair's ledger — denying
-    its spawns tells it to do something structurally impossible. The
-    close guard and the injector already skip workers; this one did
-    not. Same walk, same hard budget, same fail-open default: on
-    exhaustion answer False so the guard still runs for the chair.
-    """
-    deadline = time.monotonic() + TEAMMATE_DETECT_BUDGET
-    pid = os.getpid()
-    for _ in range(max_hops):
-        if time.monotonic() > deadline:
-            return False
-        try:
-            out = subprocess.run(
-                ["ps", "-o", "ppid=,command=", "-p", str(pid)],
-                capture_output=True, text=True, timeout=_budget(deadline),
-            ).stdout.strip()
-            bits = (out.splitlines()[0] if out else "").split(None, 1)
-            ppid = int(bits[0])
-        except Exception:
-            return False
-        command = bits[1] if len(bits) > 1 else ""
-        for tok in command.split():
-            base = os.path.basename(tok.strip("\"'"))
-            if base == "claude" or "claude-code" in tok or base.startswith("2."):
-                return "--agent-id" in command
-        if ppid <= 1:
-            return False
-        pid = ppid
-    return False
-
-
 def clarify_gate_on():
     """The Rule 0.5 gate, on unless LEDGER_GUARD_CLARIFY is exactly "0"."""
     return (os.environ.get("LEDGER_GUARD_CLARIFY") or "").strip() != "0"
+
+
+def approval_gate_on():
+    """The approval gate, on unless LEDGER_GUARD_APPROVAL is exactly "0".
+
+    Its own switch: a repo that turns the questions off has not thereby
+    agreed to skip the go, and turning either one off leaves the other
+    two gates armed.
+    """
+    return (os.environ.get("LEDGER_GUARD_APPROVAL") or "").strip() != "0"
 
 
 def _outside_fences(text):
@@ -521,16 +535,16 @@ def _section_has_content(lines, index, level):
     return False
 
 
-def ledger_clarified(ledger, text=None):
-    """True when the ledger carries a NON-EMPTY `## Clarified` section.
+def _ledger_records(ledger, heading_re, text=None):
+    """True when the ledger carries a NON-EMPTY section under heading_re.
 
     The heading alone is not the record: a chair that types the header
-    and spawns anyway has clarified nothing. EVERY heading is checked,
-    not just the first — the protocol appends later answers, so a
+    and spawns anyway has recorded nothing. EVERY heading is checked,
+    not just the first — the protocol appends later rounds, so a
     filled section lower in the file counts even when an empty one
     sits above it.
 
-    Level and case are free (`# Clarified`, `### clarified`): the rule
+    Level and case are free (`# Clarified`, `### approved`): the rule
     is about the record existing, not about markdown depth. An
     unreadable ledger fails OPEN, exactly like ledger_satisfies — a
     guard never blocks on its own IO error.
@@ -542,17 +556,32 @@ def ledger_clarified(ledger, text=None):
     lines = _outside_fences(text)
     starts = [(i, len(m.group(1)))
               for i, line in enumerate(lines)
-              for m in [re.match(CLARIFIED_HEADING_RE, line, flags=re.I)] if m]
+              for m in [re.match(heading_re, line, flags=re.I)] if m]
     if not starts:
         return False
     return any(_section_has_content(lines, i + 1, level) for i, level in starts)
 
 
+def ledger_clarified(ledger, text=None):
+    """True when the ledger carries a NON-EMPTY `## Clarified` section —
+    the answers the chair got from the user, plus its assumptions."""
+    return _ledger_records(ledger, CLARIFIED_HEADING_RE, text=text)
+
+
+def ledger_approved(ledger, text=None):
+    """True when the ledger carries a NON-EMPTY `## Approved` section —
+    the plan the chair stated and the go the user gave on it."""
+    return _ledger_records(ledger, APPROVED_HEADING_RE, text=text)
+
+
 def ledger_state(data):
     """(ledger path or None, blocker or None).
 
-    blocker is "missing", "stale", "unclarified", or None when the
-    ledger clears both Rule 0.5 and Rule 1. Both gates below share
+    blocker is "missing", "stale", "unclarified", "unapproved", or
+    None when the ledger clears both Rule 0.5 and Rule 1. The order is
+    the order the chair works in — a ledger, then the answers, then the
+    go — so it is never told to get approval for a plan it has not been
+    able to ask about yet. Both gates below share
     this so a spawn and a tracker task can never disagree about what
     the ledger says.
     """
@@ -566,6 +595,8 @@ def ledger_state(data):
         return ledger, "stale"
     if clarify_gate_on() and not ledger_clarified(ledger, text=text):
         return ledger, "unclarified"
+    if approval_gate_on() and not ledger_approved(ledger, text=text):
+        return ledger, "unapproved"
     return ledger, None
 
 
@@ -599,7 +630,39 @@ def _clarify_reason(ledger, lead):
         "is never skipped. If this ledger belongs to ABANDONED or unrelated "
         "work, do not write into it: archive it as "
         "LEDGER-<topic>-archive.md and start a fresh one for this task. "
+        "The gate after this one asks for `## Approved`, so state the plan "
+        "and get the user's go in the same round. "
         "LEDGER_GUARD_CLARIFY=0 disables this gate."
+    )
+
+
+def _approval_reason(ledger, lead):
+    """The approval-gate deny text, shared by both gates.
+
+    Deliberately unmistakable for the clarify one above: a chair that
+    lands here has already ASKED and been answered, and a message that
+    read like "go clarify" would send it round the same loop. What is
+    missing is not information — it is the user's go on what the chair
+    made of it.
+    """
+    return (
+        f"APPROVAL GUARD: {lead} the ledger at {ledger} has no `## Approved` "
+        "section with content in it, so the user has not seen what you are "
+        "about to build. Answered questions are not agreement: right answers "
+        "still leave the wrong build free to be approved silently, and "
+        "workers cannot check it with the user for you. State your reading "
+        "and get an explicit go BEFORE the first spawn. Write `## Approved` "
+        "at the TOP of the ledger, under `## Clarified`, as plain bullets — "
+        "what you WILL build, what you are deliberately NOT building, how "
+        "'done' is observed (the command, the test, the screen) — then ask "
+        "the user in ONE message and WAIT. Their go goes in the section "
+        "('- <user>, <date>: approved'), and only then re-issue this call. "
+        "If they change the plan, rewrite the section: the approval covers "
+        "what it says now, not the first draft. Shape rules are the same as "
+        "`## Clarified` — a checkbox line (`- [ ]`, `- [x]`) reads as a "
+        "ledger item and ends the section, and a fenced example, a divider, "
+        "or a bare heading does not count as content. "
+        "LEDGER_GUARD_APPROVAL=0 disables this gate."
     )
 
 
@@ -610,11 +673,15 @@ def _refuse(blocker, ledger, lead, tail, events, session_id, **fields):
     LEDGER GUARD preamble was written out twice. ledger_state() was
     introduced to stop exactly this drift one layer down; the same
     duplication had reappeared one layer up. `events` is
-    (ledger_event, clarify_event).
+    (ledger_event, clarify_event, approval_event).
     """
     if blocker == "unclarified":
         _metric(events[1], session_id, **fields)
         _deny(_clarify_reason(ledger, lead))
+        return
+    if blocker == "unapproved":
+        _metric(events[2], session_id, **fields)
+        _deny(_approval_reason(ledger, lead))
         return
     _metric(events[0], session_id, stale=blocker == "stale", **fields)
     _deny(
@@ -675,15 +742,17 @@ def _guard(data):
         blocker, ledger,
         f"this looks like a detailed delegation ({what} > {limit} chars) but",
         "Per Dynamic Workflow Rules 0.5 "
-        "and 1, write ./.workflow/LEDGER.md with BOTH parts before you "
+        "and 1, write ./.workflow/LEDGER.md with ALL THREE parts before you "
         "re-spawn: a `## Clarified` section holding the answers you got "
-        "from the user (plain bullets, not checkboxes), then the numbered "
-        "items in checkbox format ('- [ ] N. <item>'). A ledger without "
-        "the first part is denied again by the clarify gate. Then re-spawn "
+        "from the user (plain bullets, not checkboxes), a `## Approved` "
+        "section holding the plan they gave you the go on, then the numbered "
+        "items in checkbox format ('- [ ] N. <item>'). A ledger missing "
+        "either record is denied again by the clarify or approval gate. "
+        "Then re-spawn "
         "citing which ledger items each agent covers. If this is genuinely "
         "a small single-phase task, do it directly; if it is multi-phase, "
         "write the ledger and delegate — never keep multi-phase work solo.",
-        ("spawn_deny", "clarify_deny"), session_id,
+        ("spawn_deny", "clarify_deny", "approval_deny"), session_id,
         chars=len(text), threshold=limit, tool=data.get("tool_name") or "",
     )
 

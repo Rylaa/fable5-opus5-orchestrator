@@ -54,9 +54,14 @@ def test_cores_stay_on_the_token_diet():
     # the opus core OVER the old 4000 pin — the raise was required, not
     # a comfort margin. 4.4k is still far under the 10k hook cap that
     # made this a pin at all.
+    #
+    # v0.21.0 raised it again, 4400 to 4800, for the watchdog sentence
+    # in Rule 3: the opus core was at 4369 and had 31 chars of room, so
+    # the rule could not be seated at all. Same shape as the 0.5 raise —
+    # required, not comfort.
     for name in CORES:
         text = _instr(name)
-        assert len(text) < 4400, f"{name} is {len(text)} chars — over the 4.4k core diet"
+        assert len(text) < 4800, f"{name} is {len(text)} chars — over the 4.8k core diet"
 
 
 def test_switch_notes_stay_tiny():
@@ -94,6 +99,34 @@ def test_cores_require_the_playbook_before_first_delegation():
         assert "BEFORE YOUR FIRST DELEGATION" in text, name
 
 
+def test_cores_carry_the_watchdog_rule():
+    # v0.21.0: a spawn is not a start. Measured 2026-08-26 — a named
+    # verifier's process stayed alive 39 minutes with no session log
+    # while the chair reported it as running. The rule that sends a
+    # watchdog out WITH the wave is what turns that wait into a
+    # message; a core that drops it ships the old failure back.
+    for name in CORES:
+        text = _flat(_instr(name))
+        assert '"{{WATCHDOG}}" --watch' in text, name
+        assert "`watchdog` teammate" in text, name
+        assert "never poll" in text, name
+
+
+def test_the_injector_resolves_the_watchdog_path(tmp_path):
+    # The core tells the chair to RUN a script, and a relative path cannot
+    # resolve from a user's project directory — the plugin lives under
+    # ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/. The
+    # injector is the only component that knows the real root, so it
+    # substitutes the placeholder on the way out. A core that ships the
+    # placeholder unresolved hands the watchdog teammate a command that
+    # fails with "No such file or directory".
+    text = context_of(run_hook(
+        INJECT, {"model": "claude-opus-5", "session_id": "s-watchdog"},
+        env_extra={"CLAUDE_PLUGIN_ROOT": str(REPO)}, tmpdir=tmp_path))
+    assert "{{WATCHDOG}}" not in text
+    assert str(REPO / "scripts" / "agent_watchdog.py") in text
+
+
 def test_clarify_skill_exists_and_stays_bounded():
     # Rule 0.5's detail lives here for the same reason the delegation
     # contract lives in the playbook: the core summarizes, the skill
@@ -116,6 +149,59 @@ def test_clarify_skill_carries_the_user_decisions():
     assert "would a different answer produce different code?" in text
     assert "`## Clarified`" in text
     assert "SendMessage" in text          # subagents escalate, never ask the user
+
+
+def test_clarify_skill_carries_the_approval_gate():
+    # User decision (2026-08-26): answers are not agreement. The skill
+    # is where the chair reads what the `## Approved` section has to
+    # say — what it will build, what it will not, how done is observed —
+    # and that it WAITS. A rewrite that drops the section leaves the
+    # hook denying with nothing in the docs to act on.
+    text = _flat(_clarify())
+    assert "## Approved" in text
+    assert "Not building:" in text
+    assert "Done when:" in text
+    assert "LEDGER_GUARD_APPROVAL=0" in text
+
+
+def test_cores_require_approval_before_delegation():
+    # The gate is hook-enforced, but the core still has to TELL the
+    # chair what the hook wants, and in which order — clarify first,
+    # then the go, then the spawn. A deny the chair cannot act on is a
+    # loop, not a guard.
+    for name in CORES:
+        text = _flat(_instr(name))
+        assert "`## Approved`" in text, name
+        assert "GO before any spawn" in text, name
+        assert text.index("`## Clarified`") < text.index("`## Approved`"), name
+
+
+def test_cores_do_not_order_the_wave_out_before_the_go():
+    # The two rules contradicted each other: Rule 0.5 wants the user's
+    # go IN the ledger before any spawn, and Rule 1 still said "write
+    # the ledger + first worker wave in ONE message". The go takes a
+    # round trip, so both could not hold — and the cheapest way to obey
+    # both was to write the go yourself and attribute it to the user,
+    # which is the silent approval the gate exists to stop (it happened
+    # once in real use before the review caught it). Rule 1 still
+    # batches; what it batches is the WAVE, after the answer.
+    for name in CORES:
+        text = _flat(_instr(name))
+        assert "ledger + first worker wave in ONE message" not in text, name
+        assert "the whole first wave in ONE message once the go lands" in text, name
+        assert "never a ledger then solo work" in text, name
+        # And the go is the user's to write.
+        assert "their words, never yours" in text, name
+        assert text.index("Ledger + plan in ONE message") > text.index("`## Approved`"), name
+
+
+def test_the_opus_core_keeps_sizing_effort_to_the_work():
+    # The rewrite that made room for the watchdog sentence dropped the
+    # operative half of the effort rule and left only the negative one
+    # ("never on what the call costs"). A chair told what NOT to price
+    # on, and nothing about when to spend, rounds down.
+    text = _flat(_instr("dynamic-workflow-opus.md"))
+    assert "a job that needs `max` gets `max`, a mechanical sweep does not" in text
 
 
 def test_cores_require_clarification_before_delegation():
@@ -260,6 +346,58 @@ def test_readme_carries_no_price_or_cost_figures():
         _re.IGNORECASE)
     hit = money.search(readme)
     assert not hit, f"README carries a price figure: {hit.group(0) if hit else ''}"
+
+
+def _readme():
+    return (REPO / "README.md").read_text(encoding="utf-8")
+
+
+def test_readme_links_point_at_headings_that_exist():
+    # A renamed heading leaves every link to it pointing nowhere, and
+    # the page still renders: "Already on an older version? See
+    # Upgrading to v0.16.0" survived the rename of that section to
+    # "Upgrading" and quietly scrolled readers nowhere.
+    import re as _re
+
+    text = _readme()
+    slugs = set()
+    for line in text.splitlines():
+        m = _re.match(r"^#{1,6}\s+(.*?)\s*$", line)
+        if m:
+            slug = _re.sub(r"[^a-z0-9 -]", "", m.group(1).lower()).replace(" ", "-")
+            slugs.add(slug)
+    dead = [t for t in _re.findall(r"\]\(#([^)]+)\)", text) if t not in slugs]
+    assert not dead, f"README links to headings that do not exist: {dead}"
+
+
+def test_readme_does_not_undersell_how_long_the_suite_takes():
+    # The figure was written when the suite was seconds long and stayed
+    # there: measured 2026-08-27, 340 tests in 103.3s, of which
+    # tests/test_watchdog.py is 57s of real sleeping through the birth
+    # and stall thresholds. A reader who is told 25 seconds concludes
+    # the run has hung. The pin is a floor, not the number itself, so
+    # updating an honest figure does not break it.
+    import re as _re
+
+    m = _re.search(r"Runs in about (\d+) seconds", _readme())
+    assert m, "the Tests section no longer states a runtime"
+    assert int(m.group(1)) >= 60, (
+        f"README claims {m.group(1)}s; the watchdog tests alone sleep for ~57s")
+
+
+def test_manual_install_resolves_the_watchdog_placeholder():
+    # The manual path appends the profile to CLAUDE.md by hand, and the
+    # profile carries `{{WATCHDOG}}` — a placeholder ONLY the session-
+    # start hook substitutes, which this path does not run. Unresolved,
+    # the chair sends its watchdog worker off to run a file called
+    # `{{WATCHDOG}}`.
+    assert "{{WATCHDOG}}" in _instr("dynamic-workflow-fable.md")
+    manual = _readme().split("## Manual install")[1]
+    assert "{{WATCHDOG}}" in manual, "the manual path never mentions the placeholder"
+    assert "agent_watchdog.py" in manual, "and never says what to point it at"
+    # The recorder is what fills the sidecar the watchdog reads; without
+    # it the manual install ships a watchdog that can only see nothing.
+    assert "--record" in manual and "--surface" in manual
 
 
 # --- chair detection chain: override > payload > settings > marker > fable ---

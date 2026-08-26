@@ -73,11 +73,28 @@ ledger mtimes against it to decide ownership.
 import json
 import os
 import re
-import subprocess
 import sys
 import tempfile
 import time
+# Loaded by path (a hook command, a test's spec_from_file_location),
+# so the scripts directory is not always on sys.path already.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from _shared import (
+        metric as _metric,
+        is_teammate_session as _is_teammate_session)
+except Exception:
+    # `_shared.py` ships beside this file. A partial install, a half-copied
+    # plugin directory or an unreadable sibling leaves this hook with no
+    # helpers and therefore no decision it can make. Degrade to nothing at
+    # all: say nothing, deny nothing, block nothing, exit 0. Every hook here
+    # is fail-open by design, and an import error at module scope would be
+    # the one failure that ignores that, killing a turn with a traceback on
+    # every single prompt.
+    sys.exit(0)
 
+
+WATCHDOG_PLACEHOLDER = "{{WATCHDOG}}"
 
 def session_model_cache_path(session_id):
     """Per-session marker file the stop/cleanup hooks read. None if no id."""
@@ -85,23 +102,6 @@ def session_model_cache_path(session_id):
         return None
     safe = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")
     return os.path.join(tempfile.gettempdir(), f"fable-orch-model-{safe}.json")
-
-
-def _metric(event, session_id=None, **extra):
-    """Append one event line to ~/.claude/fable-orch/metrics.jsonl (best effort)."""
-    if (os.environ.get("FABLE_ORCH_METRICS") or "").strip() == "0":
-        return
-    try:
-        d = os.path.join(os.path.expanduser("~"), ".claude", "fable-orch")
-        os.makedirs(d, exist_ok=True)
-        rec = {"ts": round(time.time(), 3), "event": event}
-        if session_id:
-            rec["session"] = str(session_id)[:8]
-        rec.update(extra)
-        with open(os.path.join(d, "metrics.jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps(rec) + "\n")
-    except Exception:
-        pass
 
 
 def _is_opus(value):
@@ -155,58 +155,6 @@ def _read_marker(cache):
 
 
 TEAMMATE_DETECT_BUDGET = 1.5  # seconds; the walk measures ~5ms in practice
-
-
-def _budget(deadline, cap=5.0):
-    """Seconds a subprocess may run without overshooting the deadline.
-
-    Monotonic, exactly as in the stop guard: a wall clock can step
-    backwards (NTP, a manual change) and would then hand back a budget
-    that never expires, defeating the bound entirely."""
-    if deadline is None:
-        return cap
-    return max(0.2, min(cap, deadline - time.monotonic()))
-
-
-def _is_teammate_session(max_hops=12):
-    """True when this hook is running inside a named teammate.
-
-    Teammates are launched with `--agent-id`. The profile belongs to the
-    CHAIR: a worker that receives it is told it is the orchestrator and
-    may spawn subagents liberally — the inverse of its actual job. Walks
-    up to the first claude ancestor and answers from its argv; same
-    logic as the stop guard's copy, kept verbatim so a future common
-    module can unify them.
-
-    HARD-BUDGETED because SessionStart must never hang a session open:
-    on budget exhaustion the answer is False — "assume chair", so the
-    profile is still delivered. That failure costs one teammate carrying
-    the profile (the pre-fix behaviour for every teammate); the opposite
-    default would strip the chair of its orchestration instructions.
-    """
-    deadline = time.monotonic() + TEAMMATE_DETECT_BUDGET
-    pid = os.getpid()
-    for _ in range(max_hops):
-        if time.monotonic() > deadline:
-            return False
-        try:
-            out = subprocess.run(
-                ["ps", "-o", "ppid=,command=", "-p", str(pid)],
-                capture_output=True, text=True, timeout=_budget(deadline),
-            ).stdout.strip()
-            bits = (out.splitlines()[0] if out else "").split(None, 1)
-            ppid = int(bits[0])
-        except Exception:
-            return False
-        command = bits[1] if len(bits) > 1 else ""
-        for tok in command.split():
-            base = os.path.basename(tok.strip("\"'"))
-            if base == "claude" or "claude-code" in tok or base.startswith("2."):
-                return "--agent-id" in command
-        if ppid <= 1:
-            return False
-        pid = ppid
-    return False
 
 
 def resolve_profile(payload_model, configured_model, marker_model):
@@ -288,6 +236,14 @@ def main():
                     text += f.read()
             except Exception:
                 pass
+        # The core tells the chair to RUN a script, and a relative path
+        # cannot resolve from a user's project: the plugin lives under
+        # ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/. The
+        # injector is the only place that knows the real root, so the
+        # placeholder is resolved here, at the moment the text is handed
+        # to the chair.
+        text = text.replace(WATCHDOG_PLACEHOLDER,
+                            os.path.join(root, "scripts", "agent_watchdog.py"))
 
     # Session marker for the guards (best effort; never fatal).
     # `started` marks the session's FIRST start and must survive the

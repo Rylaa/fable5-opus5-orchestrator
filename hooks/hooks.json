@@ -25,6 +25,19 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Agent|Task)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/agent_watchdog.py\" --record",
+            "timeout": 10,
+            "statusMessage": "Agent watchdog (record)"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -57,6 +70,12 @@
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/remind_reply_shape.py\"",
             "timeout": 10,
             "statusMessage": "Reply shape reminder"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/agent_watchdog.py\" --surface",
+            "timeout": 10,
+            "statusMessage": "Agent watchdog (status)"
           }
         ]
       }

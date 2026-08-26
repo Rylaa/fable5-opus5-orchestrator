@@ -1,25 +1,23 @@
 ---
 name: playbook
-description: Orchestrator playbook — the full delegation contract (research pipeline, subagent output contract, spawn economics, forks, teammate lifecycle, verification procedure, chair hygiene). The chair MUST load this before its first delegation of every session; the injected core profile only summarizes it.
+description: Orchestrator playbook — the full delegation contract (research pipeline, subagent output contract, spawn economics, forks, teammate lifecycle, verification procedure, chair hygiene). The chair MUST load this before its first delegation of every session; the core only summarizes it.
 ---
 
 # Orchestrator Playbook
 
-Applies to both chair profiles (FABLE and OPUS). The injected core
-profile always wins on routing and limits; this file is the detail
-behind its one-liners.
+Applies to both chair profiles (FABLE and OPUS). The injected core wins
+on routing and limits; this file is the detail behind it.
 
 ## Research pipeline — parallel fan-out, no mid-flight dumps
 
-YOU pick the questions and sources — never a fetch worker. ONE
-sonnet (`medium`) per source: it fetches the source VERBATIM to
+YOU pick the questions and sources — never a fetch worker. ONE sonnet
+(`medium`) per source: it fetches the source VERBATIM to
 ./.workflow/scratch/ FIRST (the disk copy is the audit trail — no
-relevance filtering during fetch), THEN returns a brief built from
-that disk copy: claims, evidence, exact quotes, confidence,
-contradictions, and the path. A final sonnet (`high`) synthesizes
-across the briefs. YOU check the synthesis and its verbatim evidence
-against the ledger and decide. Intermediates never enter your
-context.
+filtering during fetch), THEN returns a brief from that copy: claims,
+evidence, exact quotes, confidence, contradictions, and the path. A
+final sonnet (`high`) synthesizes across the briefs. YOU check the
+synthesis and its verbatim evidence against the ledger and decide.
+Intermediates never enter your context.
 
 ## Subagent output contract (enforced)
 
@@ -33,60 +31,77 @@ Every subagent returns:
 4. confidence: "confident" / "uncertain because X"
 5. "out of scope but noticed"
 
-Reports are at most 40 lines TOTAL. A violating return is rejected
-and re-run — never silently accepted.
+Reports are at most 40 lines TOTAL. A violating return is rejected and
+re-run, never silently accepted.
 
 ## Spawn economics — batch before you multiply
 
-Every spawn pays a fixed overhead (system prompt, project rules,
-tool schemas) before doing any useful work. Batch similar mechanical
-steps into ONE worker with a checklist; spawn separately only when
-true parallelism or isolation pays for that overhead. Read-only
-agents share the repo concurrently; parallel EDITORS each run with
-`isolation: "worktree"`.
+Every spawn pays a fixed overhead (system prompt, project rules, tool
+schemas) before any useful work. Batch similar mechanical steps into ONE
+worker with a checklist; spawn separately only when parallelism or
+isolation pays for it. Read-only agents share the repo; parallel
+EDITORS each run with `isolation: "worktree"`.
 
 ## Forks
 
 `subagent_type: "fork"` clones your FULL conversation at your model
 and spends the usage limit: at most 2 per session, only while the
-conversation is still short, and only for bounded follow-ups that
-lean on context a spec cannot carry. Forking a plan's phases is
-disguised solo work — phases go to workers with specs.
+conversation is short, and only for bounded follow-ups that lean on
+context a spec cannot carry. Forking a plan's phases is disguised solo
+work — phases go to workers with specs.
 
 ## Named teammates — the user watches the work
 
 NAME every substantive worker (implementation, review, research,
-verification): named teammates run in tmux panes the user watches
-live, and their lifecycle states reach the chat; an unnamed subagent
-is a silent spinner until it returns. Only sub-minute lookups (a
-grep, one read/fetch) stay unnamed. Steer a running teammate
-mid-task with SendMessage. Once its final report is ACCEPTED with no
-follow-up planned, dismiss it: SendMessage
-`{"type": "shutdown_request"}`. Dismissal is final, so dismiss only
-after processing the output — and never leave finished teammates
-stacked (the plugin reaps forgotten panes).
+verification): named teammates run in tmux panes the user watches live,
+and their lifecycle states reach the chat; an unnamed subagent is a
+silent spinner until it returns. Only sub-minute lookups (a grep, one
+read/fetch) stay unnamed. Steer a running teammate with SendMessage.
+Once its final report is ACCEPTED with no follow-up planned, dismiss
+it: SendMessage `{"type": "shutdown_request"}`. Dismissal is final, so
+process the output first — and never leave finished teammates stacked
+(the plugin reaps forgotten panes).
+
+## Watchdog — a spawn is not a start
+
+"Spawned successfully" means a pane opened, not that a session booted:
+measured twice in one day, whole waves lived past 20 minutes with no
+session log while the chair called them running. Time is not progress.
+
+Every async wave carries one more teammate, `watchdog` (sonnet, low).
+Its job is to LOOP `python3 "<path in your profile>" --watch` — each
+call polls read-only and returns in ~100s, so it calls again — and to
+message the chair only on `unborn` (process alive, no log) or
+`stalled` (log quiet past the threshold). A healthy `starting ->
+working` transition is not news. The chair idles as usual, never polls.
+
+It covers named `Agent` and `Task` spawns only, never `Workflow`: a
+workflow names a script rather than an agent, so recording one would
+park a name no log can match — a standing `unborn` alarm instead of a
+gap.
+
+Nothing is killed for you. On an alarm: ping; with no reply dismiss the
+pane and re-spawn, or do the work yourself — and say so.
 
 ## Verification procedure
 
 The verifier is FRESH — it has not worked on the task. Give it the
-original request, the ledger path, and THE DIFF — a concrete
+original request, the ledger path, and THE DIFF — a
 `git diff <base>..HEAD` command or a patch file on disk, plus the
 report paths. Never the raw scratch dump, and never "go find what
-changed": a verifier that has to locate the change spends its budget
-looking instead of checking. It reads from disk; its
-only job is to find what is missing, wrong, or unaddressed, item by
-item — and only it closes the `V.` ledger item. It is ONE call over
-the whole change, not one per phase, and the chair sizes its effort
-the way it sizes any other spawn. Findings become new phases;
-re-verify after fixes. CAP: 3 verify→fix cycles, then STOP and
-report the open items to the user.
+changed": a verifier that must locate the change spends its budget
+looking instead of checking. Its only job is to find what is missing,
+wrong, or unaddressed, item by item — and only it closes the `V.` ledger
+item. It is ONE call over the whole change, not one per phase, and the
+chair sizes its effort like any other spawn. Findings become new phases;
+re-verify after fixes. CAP: 3 verify→fix cycles, then STOP and report
+open items to the user.
 
 ## Chair context hygiene
 
-Consume briefs + verbatim snippets; bulk stays on disk. When a
-decision hinges on exact content that is short, read it yourself —
-never decide on a summary when the source fits in a few hundred
-lines. Prefer per-task sessions: the ledger and scratch survive
-/clear, so finish a task, close it, start the next one clean. Drop
-closed-phase raw material; keep outputs minimal; parallelize
-independent calls.
+Consume briefs + verbatim snippets; bulk stays on disk. When a decision
+hinges on short exact content, read it yourself — never decide on a
+summary when the source fits in a few hundred lines. Prefer per-task
+sessions: the ledger and scratch survive /clear — finish one, close it,
+start the next clean. Drop closed-phase raw material; keep outputs
+minimal; parallelize independent calls.

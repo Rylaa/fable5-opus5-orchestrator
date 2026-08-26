@@ -17,6 +17,7 @@ STRIP_ENV = [
     "LEDGER_GUARD_THRESHOLD",
     "LEDGER_GUARD_TASKS",
     "LEDGER_GUARD_CLARIFY",
+    "LEDGER_GUARD_APPROVAL",
     "FABLE_ORCH_REPLY_SHAPE",
     "LEDGER_GUARD_STOP_MODE",
     "FABLE_ORCH_METRICS",
@@ -27,6 +28,11 @@ STRIP_ENV = [
     "FABLE_ORCH_PROFILE",
     "FABLE_ORCH_TEAMMATE_STOP",
     "FABLE_ORCH_TEAMMATE_INJECT",
+    "FABLE_ORCH_WATCHDOG",
+    "FABLE_ORCH_WATCH_BIRTH_S",
+    "FABLE_ORCH_WATCH_STALL_S",
+    "FABLE_ORCH_WATCH_INTERVAL",
+    "FABLE_ORCH_WATCH_SELF",
     "CLAUDE_CONFIG_DIR",
     "TMUX_TMPDIR",
     "CLAUDE_PLUGIN_ROOT",
@@ -121,45 +127,87 @@ def repo_dir(tmp_path):
 # LEDGER gates rather than the clarify gate needs one to get past it.
 CLARIFIED = "## Clarified\n- Q1: scope -> the whole thing\n\n"
 CLARIFIED_HEADING = r"^[ \t]{0,3}#{1,6}[ \t]*clarified\b"
+# And what an approved one looks like: the gate after it wants a
+# non-empty `## Approved` section — the plan the chair stated and the
+# user's go on it. Same deal, one gate later.
+APPROVED = "## Approved\n- Yusuf: go — build it as described above\n\n"
+APPROVED_HEADING = r"^[ \t]{0,3}#{1,6}[ \t]*approved\b"
 
 SPAWN_GUARD = "ledger_guard_spawn.py"
 LONG = "x" * 2000       # above the default 1500 gate
 VERY_LONG = "x" * 5000
 
 
-def _ensure_record(body):
-    """Prepend a `## Clarified` record unless the body already has one.
+def _spawn_guard_module():
+    """The guard itself, imported by path — the fixture's own oracle.
+
+    _ensure_record has to decide "does this body already carry that
+    section?" exactly as the guard decides it, or the fixture and the
+    code under test disagree and the test proves nothing. Re-reading
+    the guard's fence rule here in a second regex is how they would
+    drift, so the fixture borrows the real one.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_fixture_spawn_guard", SCRIPTS / "ledger_guard_spawn.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_GUARD = _spawn_guard_module()
+
+
+def _ensure_record(body, heading, record):
+    """Prepend `record` unless the body already carries that section.
 
     The scan matches the GUARD's rule — any heading level, either
     case — not a literal `## Clarified`, so a body written as
-    `### clarified` is not silently given a second section.
+    `### clarified` is not silently given a second section. Fenced
+    blocks are stripped first, for the same reason: the guard does not
+    count a markdown EXAMPLE of the section as the section, so a body
+    that only quotes one must still be given a real record. Scanning
+    the raw text left the fixture believing a fenced heading counted,
+    and a test written to exercise a later gate would silently be
+    answered by the clarify one instead.
     """
-    if re.search(CLARIFIED_HEADING, body, flags=re.M | re.I):
+    if re.search(heading, "\n".join(_GUARD._outside_fences(body)),
+                 flags=re.M | re.I):
         return body
-    return CLARIFIED + body
+    return record + body
 
 
-def write_ledger(root, body="- [ ] 1. item\n", ensure_clarified=True):
+def write_ledger(root, body="- [ ] 1. item\n", ensure_clarified=True,
+                 ensure_approved=True):
     """Write .workflow/LEDGER.md.
 
-    `ensure_clarified=True` (the default) guarantees the file carries a
-    clarify record: one is prepended only when the body has none, so a
-    body that already supplies its own is left exactly as written.
-    Pass False to write the body verbatim — what the clarify-gate tests
-    need, since an absent record is the thing under test.
+    `ensure_clarified=True` / `ensure_approved=True` (the defaults)
+    guarantee the file carries both spawn-gate records: each is
+    prepended only when the body has none, so a body that already
+    supplies its own is left exactly as written. Pass False to leave
+    that record out — what the clarify- and approval-gate tests need,
+    since an absent record is the thing under test. They are separate
+    switches because the gates are: an approval test wants a ledger
+    that IS clarified and is not approved.
     """
     return write_named_ledger(root, "LEDGER.md", body,
-                              ensure_clarified=ensure_clarified)
+                              ensure_clarified=ensure_clarified,
+                              ensure_approved=ensure_approved)
 
 
 def write_named_ledger(root, name, body="- [ ] 1. item\n", age=None,
-                       ensure_clarified=True):
+                       ensure_clarified=True, ensure_approved=True):
     """The same, under an arbitrary LEDGER*.md name, optionally aged."""
     d = root / ".workflow"
     d.mkdir(parents=True, exist_ok=True)
     path = d / name
-    path.write_text(_ensure_record(body) if ensure_clarified else body,
-                    encoding="utf-8")
+    text = body
+    if ensure_approved:
+        text = _ensure_record(text, APPROVED_HEADING, APPROVED)
+    if ensure_clarified:
+        text = _ensure_record(text, CLARIFIED_HEADING, CLARIFIED)
+    path.write_text(text, encoding="utf-8")
     if age is not None:
         os.utime(path, (age, age))
     return path

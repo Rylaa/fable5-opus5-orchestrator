@@ -62,6 +62,8 @@ def test_command_matches_what_the_guards_enforce():
     assert "- [ ] N." in text
     assert "- [ ] V. fresh-eyes verification passed" in text
     assert "Plain bullets" in text            # checkbox lines end the section
+    assert "## Approved" in text              # the approval gate, same file
+    assert "WAIT" in text                     # ...and it is a stop, not a note
     assert "ONE question per message" in text
     assert "shutdown_request" in text         # finished workers get dismissed
     assert "three verify-fix cycles" in text  # the documented cap

@@ -7,18 +7,18 @@ description: Clarification protocol — grill an ambiguous request into a Requir
 
 A worker cannot ask the user anything. Every ambiguity you carry into
 a spawn prompt becomes a guess the worker commits to code, and you pay
-for it twice — once building the wrong thing, once rebuilding it. The
-cheapest question is the one asked before the first spawn.
+for it twice — once building the wrong thing, once rebuilding it.
 
-Chair only. A subagent that hits an ambiguity does NOT run this skill:
-it reports the ambiguity to the chair with SendMessage and waits.
+Chair only. A subagent that hits an ambiguity reports it to the chair
+with SendMessage and waits.
 
 ## The gate
 
 Nothing is delegated, planned, or edited until every ambiguity that
-would change the work is either resolved by an answer or written down
-as an explicit assumption the user can veto. `## Clarified` in the
-ledger is the record, and the spawn guard denies without it.
+would change the work is resolved by an answer or written down as an
+assumption the user can veto — and then until the user
+approves what you made of it. `## Clarified` and `## Approved` in the
+ledger are the record; the spawn guard denies without either.
 
 ## Scan — seven axes
 
@@ -30,13 +30,12 @@ Each axis that is unresolved AND would change the work is a question:
    command, the screen.
 3. **Constraints** — backward compatibility, dependencies, budget,
    what must not move.
-4. **Ownership of choices** — which decisions are the user's taste and
-   which are yours? Guessing on taste is expensive.
+4. **Ownership of choices** — whose taste is each decision? Guessing
+   on taste is expensive.
 5. **Priority conflict** — when speed, correctness, and token cost
    disagree, which wins here?
 6. **Contact with what exists** — which current file, pattern, or
-   contract does this touch? Read first; never ask what the repo
-   answers.
+   contract does this touch? Read first.
 7. **Failure behaviour** — what happens on error, and what does
    rollback look like?
 
@@ -44,16 +43,13 @@ Each axis that is unresolved AND would change the work is a question:
 
 Before asking: *would a different answer produce different code?* If
 no, do not ask — write the assumption and move on. This filter is what
-makes an uncapped question loop safe. Never ask what you can read; a
-question the repo already answers spends the user's attention on your
-laziness.
+makes an uncapped question loop safe. Never ask what the repo answers.
 
 ## One question per message
 
 One question. Wait. The answer re-shapes the map — it closes some
 axes, opens others, and the next question is DERIVED from it, not read
-off a pre-written list. Batching guesses the order and kills the
-derivation.
+off a pre-written list.
 
 No cap. Stop when the scan turns up nothing that would change the
 work, never at a number.
@@ -80,10 +76,9 @@ numbered items:
 ```
 
 Then the `- [ ] N.` items, each traceable to an answer or an
-assumption. Then spawn. Worker specs cite items, the items carry the
-answers, and no worker has to guess. Answers that arrive mid-task are
-appended, never merged away — a second `## Clarified` block lower in
-the file counts.
+assumption. Worker specs cite items, the items carry the answers, and
+no worker has to guess. Answers that arrive mid-task are appended — a
+second `## Clarified` block lower in the file counts.
 
 Write answers as **plain bullets**. ANY checkbox line — `- [ ] 1.`,
 `- [x] Q1: yes` — reads as a ledger item and closes the section
@@ -95,6 +90,25 @@ section.
 A genuinely unambiguous request still gets the section — one line:
 `- No ambiguity: <why the request answers itself>`.
 
+## Then get the go, then delegate
+
+Answers are not agreement — right answers still leave the wrong build
+free to be approved silently. Before the FIRST spawn, say what you are
+about to do, and wait.
+
+```markdown
+## Approved
+- Building: <the change, in a line or two>
+- Not building: <the neighbour you are deliberately leaving alone>
+- Done when: <the command, test, or screen that shows it>
+- <user>, <date>: approved
+```
+
+Ask once, then stop — no spawning while you wait. Plain bullets here
+too; a checkbox line closes this section the same way. If the plan
+changes, rewrite the section: the approval covers what it says now.
+`LEDGER_GUARD_APPROVAL=0` turns the gate off.
+
 ## Red flags
 
 | Thought | Reality |
@@ -103,7 +117,6 @@ A genuinely unambiguous request still gets the section — one line:
 | "I'll infer it from the code" | Code shows what IS, never what they WANT. |
 | "Asking looks slow" | One question costs a message. A wrong build costs the session. |
 | "I'll ask all four at once" | Answer 2 changes question 3. Batching guesses the order. |
-| "They said go, so it's clear" | "Go" approves a direction, not every detail. |
-| "It's a small change" | A small change on a wrong assumption is still wrong. |
+| "They said go, so it's clear" | "Go" approves a direction. Say what you will build and get a second go. |
 | "The worker will figure it out" | Workers cannot reach the user. Your ambiguity becomes their guess. |
 | "Nothing here is ambiguous" | Then write that line under `## Clarified` and move — the section is never skipped. |

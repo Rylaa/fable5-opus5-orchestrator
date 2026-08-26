@@ -27,6 +27,23 @@ import subprocess
 import sys
 import tempfile
 import time
+# Loaded by path (a hook command, a test's spec_from_file_location),
+# so the scripts directory is not always on sys.path already.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from _shared import (
+        tmp_json as _tmp_json,
+        metric as _metric,
+        budget as _budget)
+except Exception:
+    # `_shared.py` ships beside this file. A partial install, a half-copied
+    # plugin directory or an unreadable sibling leaves this hook with no
+    # helpers and therefore no decision it can make. Degrade to nothing at
+    # all: say nothing, deny nothing, block nothing, exit 0. Every hook here
+    # is fail-open by design, and an import error at module scope would be
+    # the one failure that ignores that, killing a turn with a traceback on
+    # every single prompt.
+    sys.exit(0)
 
 # Temp-file sweep is 96h (not 48h): a session left open-but-idle for two
 # days would otherwise lose its marker/sidecar to another session's sweep
@@ -47,30 +64,6 @@ def _rotate_metrics():
                             "fable-orch", "metrics.jsonl")
         if os.path.isfile(path) and os.path.getsize(path) > METRICS_MAX_BYTES:
             os.replace(path, path + ".old")
-    except Exception:
-        pass
-
-
-def _tmp_json(prefix, session_id):
-    if not session_id:
-        return None
-    safe = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")
-    return os.path.join(tempfile.gettempdir(), f"{prefix}-{safe}.json")
-
-
-def _metric(event, session_id=None, **extra):
-    """Append one event line to ~/.claude/fable-orch/metrics.jsonl (best effort)."""
-    if (os.environ.get("FABLE_ORCH_METRICS") or "").strip() == "0":
-        return
-    try:
-        d = os.path.join(os.path.expanduser("~"), ".claude", "fable-orch")
-        os.makedirs(d, exist_ok=True)
-        rec = {"ts": round(time.time(), 3), "event": event}
-        if session_id:
-            rec["session"] = str(session_id)[:8]
-        rec.update(extra)
-        with open(os.path.join(d, "metrics.jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps(rec) + "\n")
     except Exception:
         pass
 
@@ -101,24 +94,6 @@ def _team_sockets():
                 if not n.startswith(".")]
     except OSError:
         return []
-
-
-def _budget(deadline, cap=5.0):
-    """Seconds a subprocess may run without overshooting the deadline.
-
-    Checking the deadline only BETWEEN calls is not enough: a call
-    started at 11.9s of a 12s budget still runs its full 5s timeout, so
-    three wedged tmux servers push SessionEnd to ~15s against a 20s
-    hook timeout — a 1.32x margin, and unconditional, since this sweep
-    has no rate limit. Passing the remaining budget as the subprocess's
-    own timeout bounds the whole hook instead of each call.
-
-    Deadlines are monotonic: a wall clock can step backwards (NTP, a
-    manual change) and would then hand back a budget that never
-    expires, defeating the bound entirely."""
-    if deadline is None:
-        return cap
-    return max(0.2, min(cap, deadline - time.monotonic()))
 
 
 def _tmux(sock, *args, deadline=None):
@@ -296,7 +271,8 @@ def main():
         data = {}
 
     session_id = data.get("session_id")
-    for prefix in ("fable-orch-model", "fable-orch-stop", "fable-orch-tasks"):
+    for prefix in ("fable-orch-model", "fable-orch-stop", "fable-orch-tasks",
+                   "fable-orch-agents"):
         path = _tmp_json(prefix, session_id)
         if path and os.path.isfile(path):
             try:

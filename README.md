@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Rylaa/fable5-opus5-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/Rylaa/fable5-opus5-orchestrator/actions/workflows/ci.yml)
 
-Claude Fable 5 stays in the chair and only thinks. Sonnet 5 and Opus 5 do the work. Four hooks make sure it actually happens.
+Claude Fable 5 stays in the chair and only thinks. Sonnet 5 and Opus 5 do the work. Six hooks make sure it actually happens.
 
 ## Install
 
@@ -13,7 +13,7 @@ Claude Fable 5 stays in the chair and only thinks. Sonnet 5 and Opus 5 do the wo
 
 Restart Claude Code. Takes about a minute. Needs `python3`. macOS and Linux only — the hooks call `tmux`. Nothing to configure.
 
-Already on an older version? See [Upgrading to v0.16.0](#upgrading-to-v0160).
+Already on an older version? See [Upgrading](#upgrading).
 
 ## Start a task
 
@@ -66,7 +66,7 @@ Four rules keep the answers coming back small:
 3. Five greps are one worker with a checklist, not five workers.
 4. A worker that is unsure goes up a tier. It never comes back to the chair unresolved.
 
-## The four gates
+## The five gates
 
 Instructions get ignored. These do not.
 
@@ -76,11 +76,13 @@ Instructions get ignored. These do not.
 ├───┼─────────────┼───────────────────────────────┼────────────────────────────────┤
 │ 1 │ Clarify     │ big spawn, ledger has no      │ writing a `## Clarified`       │
 │   │             │ answers written down          │ section with real content      │
-│ 2 │ Spawn       │ spawn prompt over 1500 chars, │ writing `.workflow/LEDGER.md`  │
+│ 2 │ Approve     │ big spawn, ledger has no plan │ writing `## Approved`: what it │
+│   │             │ you agreed to                 │ will build, and your go on it  │
+│ 3 │ Spawn       │ spawn prompt over 1500 chars, │ writing `.workflow/LEDGER.md`  │
 │   │             │ no ledger at all              │ with numbered checkbox items   │
-│ 3 │ Task list   │ 3rd tracker task against a    │ whatever the row above wants;  │
-│   │             │ ledger gate 1 or 2 would block│ once per kind of block         │
-│ 4 │ Close       │ turn ends with open items     │ finishing them, or saying in   │
+│ 4 │ Task list   │ 3rd tracker task against a    │ whatever the rows above want;  │
+│   │             │ ledger gate 1-3 would block   │ once per kind of block         │
+│ 5 │ Close       │ turn ends with open items     │ finishing them, or saying in   │
 │   │             │ (blocks once per session)     │ one line why not               │
 └───┴─────────────┴───────────────────────────────┴────────────────────────────────┘
 ```
@@ -91,7 +93,7 @@ Never blocked: short spawns, forks, and workers. Workers are skipped on purpose:
 
 A ledger stops counting when every item is closed **and** it was last touched before this session. Retire one for good by renaming it `LEDGER-<topic>-archive.md`.
 
-Each gate covers one place work goes wrong: a question nobody asked, requirements dropped between your task and the plan, the chair doing a six-phase job alone on the most expensive model, and closing with items still open. Everything in between is judgment — and that belongs to the model, not to a regex.
+Each gate covers one place work goes wrong: a question nobody asked, a plan nobody agreed to, requirements dropped between your task and the plan, the chair doing a six-phase job alone on the most expensive model, and closing with items still open. Everything in between is judgment — and that belongs to the model, not to a regex.
 
 ## Step 2 in detail: the questions
 
@@ -117,6 +119,18 @@ What lands in your ledger:
 Plain bullets. Any checkbox line — `- [ ] 1.`, `- [x] Q1: yes` — is read as a ledger item and ends the section instead of filling it. A `## Clarified` inside a code fence is an example, not a record, and a divider on its own is not an answer. Sub-headings stay inside the section, so `### Round 2` is fine.
 
 Nothing to ask? The section is still written, as one line: `- No ambiguity: <why>`.
+
+Then, before anything is handed out, Claude says what it is about to build and stops:
+
+```markdown
+## Approved
+- Building: the new CSV exporter, beside the old one, behind the same flag
+- Not building: backfilling existing exports, touching the importer
+- Done when: `pytest tests/test_export.py -q` is green and the column order matches
+- You, 2026-08-26: approved
+```
+
+Right answers to good questions still leave the wrong build free to be approved silently. This is the line where you catch it — and the only place you have to, because after this the work is running.
 
 ## Step 3 in detail: the ledger
 
@@ -165,6 +179,32 @@ Started `claude` inside tmux? They show up as extra panes: `prefix q` to jump, `
 
 Finished workers are killed automatically — on session end, and on a slow sweep that kills panes sitting under ~1% CPU for an hour. Left alone they pile up: one measured run had 63 orphans holding about 5 GB.
 
+## The watchdog: a spawn is not a start
+
+"Spawned successfully" means a pane opened. It does not mean the agent booted.
+
+Measured twice on 2026-08-26: a named verifier's process stayed alive for 39 minutes with no session log and its brief never read, and later a ten-agent wave did the same for twenty minutes. Both times the chair reported them as running. Elapsed time is not progress.
+
+So the chair sends a `watchdog` worker out **with** every async wave. It loops a read-only check, stays quiet while the wave is healthy, and messages the chair the moment an agent reads:
+
+- `unborn` — process alive, no session log at all, past the birth threshold
+- `stalled` — session log untouched past the stall threshold
+- `unknown` — the process scan itself failed; nothing is concluded and nothing is forgotten
+
+An agent is identified by the `--agent-name` on its command line, not by the name the chair asked for: a collision turns `angleA` into `angleA-2`, and the assigned name is the one everything else sees. A session log counts as an agent's own only when it carries both that name and the wave's `--team-name`.
+
+It covers named `Agent` and `Task` spawns only — not `Workflow`, even though the spawn gates above read a Workflow `script` too: a Workflow names a script rather than an agent, its agents run inside the workflow's own runtime, and no session log ever carries a name the watchdog could match, so recording one would leave a permanent `unborn` alarm against an agent that was never going to appear.
+
+It is not a gate. Nothing is blocked, nothing is killed, and a healthy wave costs the chair no extra step — it goes idle as before and is woken only when there is something to do. What to do about it stays the chair's call: ping the agent, dismiss and re-spawn, or take the work back.
+
+Look for yourself at any time (the path is in the profile the chair was given at session start):
+
+```bash
+python3 ~/.claude/plugins/cache/fable-orchestrator/orchestrator/*/scripts/agent_watchdog.py --check
+```
+
+Columns: state, age, how long the log has been quiet, and the last tool the agent called.
+
 ## How answers come out
 
 The plugin ships its own reply rules, so every install gets them — no extra skill to install.
@@ -181,7 +221,7 @@ Turn the per-turn line off with `FABLE_ORCH_REPLY_SHAPE=0`; the session-start ru
 
 ## Settings
 
-All optional, in `~/.claude/settings.json` under `"env"`. The five worth knowing:
+All optional, in `~/.claude/settings.json` under `"env"`. The ones worth knowing:
 
 ```
 ┌───────────────────────────────┬────────────────────┬────────────────────────────────────────────┐
@@ -189,24 +229,28 @@ All optional, in `~/.claude/settings.json` under `"env"`. The five worth knowing
 ├───────────────────────────────┼────────────────────┼────────────────────────────────────────────┤
 │ LEDGER_GUARD_THRESHOLD        │ 1500               │ spawn-guard gate (chars)                   │
 │ LEDGER_GUARD_CLARIFY          │ (on)               │ 0 disables the clarify gate                │
+│ LEDGER_GUARD_APPROVAL         │ (on)               │ 0 disables the approval gate               │
 │ LEDGER_GUARD_TASKS            │ 3                  │ 3rd ledgerless tracker task denied; 0 off  │
 │ FABLE_ORCH_PROFILE            │ auto               │ pin the chair profile: auto | fable | opus │
 │ FABLE_ORCH_REPLY_SHAPE        │ (on)               │ 0 drops the per-turn reply reminder        │
 │ FABLE_ORCH_TEAMMATE_IDLE_H    │ 1                  │ kill worker panes idle ≥ N hours; 0 off    │
+│ FABLE_ORCH_WATCHDOG           │ (on)               │ 0 disables the watchdog completely         │
+│ FABLE_ORCH_WATCH_BIRTH_S      │ 120                │ seconds before a silent agent reads unborn │
+│ FABLE_ORCH_WATCH_STALL_S      │ 600                │ seconds of log silence before stalled      │
 └───────────────────────────────┴────────────────────┴────────────────────────────────────────────┘
 ```
 
-Rarely needed: `LEDGER_GUARD_STOP_MODE` (`every-turn` blocks every turn instead of once), `FABLE_ORCH_TEAMMATE_STOP` (`1` holds workers on the ledger too), `FABLE_ORCH_TEAMMATE_INJECT` (`1` gives workers the profile), `FABLE_ORCH_METRICS` (`0` stops the local log), `FABLE_ORCH_SWARM_CLEANUP` (`0` stops all reaping), `FABLE_ORCH_SWARM_MAX_IDLE_H` (default 48), `FABLE_ORCH_TEAMMATE_IDLE_RATE` (default 0.01).
+Rarely needed: `LEDGER_GUARD_STOP_MODE` (`every-turn` blocks every turn instead of once), `FABLE_ORCH_TEAMMATE_STOP` (`1` holds workers on the ledger too), `FABLE_ORCH_TEAMMATE_INJECT` (`1` gives workers the profile), `FABLE_ORCH_METRICS` (`0` stops the local log), `FABLE_ORCH_SWARM_CLEANUP` (`0` stops all reaping), `FABLE_ORCH_SWARM_MAX_IDLE_H` (default 48), `FABLE_ORCH_TEAMMATE_IDLE_RATE` (default 0.01), `FABLE_ORCH_WATCH_INTERVAL` (default 30), `FABLE_ORCH_WATCH_SELF` (default `watchdog`).
 
 Every hook writes one event line to `~/.claude/fable-orch/metrics.jsonl` — events only, never prompt content. Read it with `python3 scripts/stats.py`.
 
-## Upgrading to v0.16.0
+## Upgrading
 
-The clarify gate is new, and no ledger written before this release has a `## Clarified` section. Takes about two minutes per live ledger.
+No ledger written before the gate that reads it has the section it wants: `## Clarified` came in v0.16.0, `## Approved` in v0.21.0. Takes about two minutes per live ledger.
 
 1. Open each `.workflow/LEDGER*.md` you are still working on.
-2. Add a `## Clarified` section at the top with what was already agreed.
-3. Or skip it for now: set `LEDGER_GUARD_CLARIFY=0` for that session.
+2. Add a `## Clarified` section at the top with what was already agreed, and a `## Approved` section with what it is building and your go on it.
+3. Or skip it for now: set `LEDGER_GUARD_CLARIFY=0` / `LEDGER_GUARD_APPROVAL=0` for that session.
 
 Finished ledgers need nothing.
 
@@ -216,7 +260,7 @@ Finished ledgers need nothing.
 python3 -m pytest tests/ -q
 ```
 
-Runs in about 25 seconds. The hooks are plain stdin/stdout JSON filters, so every test runs one as a real subprocess: thresholds, the fork exemption, the clarify gate (heading level and case, code fences, setext headings, multiple sections, the numbered-item stop), the task-list gate, the upward ledger search and where it stops, close-guard scoping, metrics, profile injection and switching, cleanup, and worker reaping against a fake tmux.
+Runs in about 105 seconds, most of it spent asleep: the watchdog tests drive real subprocesses through the birth and stall thresholds, and waiting is the behaviour under test. The hooks are plain stdin/stdout JSON filters, so every test runs one as a real subprocess: thresholds, the fork exemption, the clarify and approval gates (heading level and case, code fences, setext headings, multiple sections, the numbered-item stop, and the order the three deny texts come in), the task-list gate, the upward ledger search and where it stops, close-guard scoping, metrics, profile injection and switching, cleanup, and worker reaping against a fake tmux.
 
 A second layer checks the *text*: the profiles stay under their size budget and keep the decisions that earlier rewrites were not allowed to drop.
 
@@ -224,14 +268,14 @@ A second layer checks the *text*: the profiles stay under their size budget and 
 
 1. **Hooks check shape, not quality.** A thin ledger passes. A one-line "no ambiguity" passes. Checking harder would just teach the model to write filler.
 2. **Ticking `- [x]` without checking is possible.** The box is not proof.
-3. **A `## Clarified` section is not scoped to a session.** Once written it satisfies gate 1 for the life of that file, including for work added to the ledger days later. Start a new ledger for a new task.
+3. **Neither section is scoped to a session.** Once `## Clarified` and `## Approved` are written they satisfy gates 1 and 2 for the life of that file, including for work added to the ledger days later. Nothing checks that the approval still describes what is being built. Start a new ledger for a new task.
 4. **Two chairs only** — Fable and Opus. Any other model gets the Fable profile.
 5. **A solo session that never creates tracker tasks slips through** the task gate. It counts tasks, not work.
 6. **Idle-worker detection is a guess.** A worker stuck in one long quiet wait can be killed mid-wait. Raise `FABLE_ORCH_TEAMMATE_IDLE_H` if that is your workload.
 
 ## Manual install (without the plugin system)
 
-1. Copy `scripts/ledger_guard_spawn.py`, `scripts/ledger_guard_stop.py`, and `scripts/cleanup_session_cache.py` to `~/.claude/hooks/`.
+1. Copy `scripts/ledger_guard_spawn.py`, `scripts/ledger_guard_stop.py`, `scripts/cleanup_session_cache.py`, `scripts/agent_watchdog.py` **and `scripts/_shared.py`** to `~/.claude/hooks/`. `_shared.py` is not optional: the guards import their common helpers from it and will not start without it.
 2. Merge this into `~/.claude/settings.json`:
 
 ```json
@@ -242,6 +286,21 @@ A second layer checks the *text*: the profiles stay under their size budget and 
         "matcher": "^(Agent|Task|Workflow|TaskCreate)$",
         "hooks": [
           { "type": "command", "command": "python3 ~/.claude/hooks/ledger_guard_spawn.py", "timeout": 10 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Agent|Task)$",
+        "hooks": [
+          { "type": "command", "command": "python3 ~/.claude/hooks/agent_watchdog.py --record", "timeout": 10 }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 ~/.claude/hooks/agent_watchdog.py --surface", "timeout": 10 }
         ]
       }
     ],
@@ -264,7 +323,8 @@ A second layer checks the *text*: the profiles stay under their size budget and 
 ```
 
 3. Append `instructions/dynamic-workflow-fable.md` to `~/.claude/CLAUDE.md`, and copy both skills to `~/.claude/skills/playbook/SKILL.md` and `~/.claude/skills/clarify/SKILL.md`. The profile asks for `orchestrator:playbook` and `orchestrator:clarify`; copied by hand they are just `playbook` and `clarify`.
-4. Without the session-start hook there is no session marker, so the close guard cannot tell your ledger from another session's.
+4. In the copy you just appended, replace `{{WATCHDOG}}` with `~/.claude/hooks/agent_watchdog.py`. The plugin's session-start hook substitutes that placeholder on the way in; nothing does it here, so left alone the chair sends its watchdog worker off to run a file called `{{WATCHDOG}}`.
+5. Without the session-start hook there is no session marker, so the close guard cannot tell your ledger from another session's.
 
 Do not run the plugin **and** the manual install together. You would get every hook twice.
 

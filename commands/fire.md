@@ -24,12 +24,16 @@ going until the scan turns up nothing. There is no question limit.
 - `## Clarified` at the top: every answer you got, plus every
   assumption you are proceeding on. Plain bullets — a checkbox line
   reads as a ledger item and ends the section.
+- `## Approved` under it: what you WILL build, what you are
+  deliberately NOT building, how "done" is observed. Then ask the user
+  for the go in ONE message and WAIT — their answer goes in the
+  section, and nothing is handed out before it is there.
 - `- [ ] N. <item>` for every requirement, constraint, and edge case,
   one per line.
 - `- [ ] V. fresh-eyes verification passed` as the last item.
 
-The spawn guard denies serious delegation until this file has both
-parts, so write it before the first worker, not after.
+The spawn guard denies serious delegation until this file carries all
+three parts, so write it before the first worker, not after.
 
 ## 3 · Hand the work out
 
@@ -44,6 +48,11 @@ Load `orchestrator:playbook` before the first spawn. Then:
   `isolation: "worktree"`.
 - Dismiss a worker with `{"type": "shutdown_request"}` the moment its
   report is accepted. Never leave finished workers stacked.
+- Send a `watchdog` worker (sonnet, low) out WITH the wave. Its one job
+  is to LOOP the watchdog command from your profile
+  (`python3 "<path>" --watch`, each call returns within ~100s) and to
+  report only `unborn` or `stalled`. A spawn is not a start. You do not
+  poll and you do not wait — act when it speaks.
 
 ## 4 · Verify the close
 

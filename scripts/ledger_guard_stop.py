@@ -33,15 +33,27 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 import time
-
-
-def _tmp_json(prefix, session_id):
-    if not session_id:
-        return None
-    safe = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")
-    return os.path.join(tempfile.gettempdir(), f"{prefix}-{safe}.json")
+# Loaded by path (a hook command, a test's spec_from_file_location),
+# so the scripts directory is not always on sys.path already.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from _shared import (
+        tmp_json as _tmp_json,
+        metric as _metric,
+        budget as _budget,
+        cpu_seconds as _cpu_seconds,
+        is_claude_exe as _is_claude_exe,
+        is_teammate_session as _is_teammate_session)
+except Exception:
+    # `_shared.py` ships beside this file. A partial install, a half-copied
+    # plugin directory or an unreadable sibling leaves this hook with no
+    # helpers and therefore no decision it can make. Degrade to nothing at
+    # all: say nothing, deny nothing, block nothing, exit 0. Every hook here
+    # is fail-open by design, and an import error at module scope would be
+    # the one failure that ignores that, killing a turn with a traceback on
+    # every single prompt.
+    sys.exit(0)
 
 
 def session_model_cache_path(session_id):
@@ -50,23 +62,6 @@ def session_model_cache_path(session_id):
 
 def stop_sidecar_path(session_id):
     return _tmp_json("fable-orch-stop", session_id)
-
-
-def _metric(event, session_id=None, **extra):
-    """Append one event line to ~/.claude/fable-orch/metrics.jsonl (best effort)."""
-    if (os.environ.get("FABLE_ORCH_METRICS") or "").strip() == "0":
-        return
-    try:
-        d = os.path.join(os.path.expanduser("~"), ".claude", "fable-orch")
-        os.makedirs(d, exist_ok=True)
-        rec = {"ts": round(time.time(), 3), "event": event}
-        if session_id:
-            rec["session"] = str(session_id)[:8]
-        rec.update(extra)
-        with open(os.path.join(d, "metrics.jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps(rec) + "\n")
-    except Exception:
-        pass
 
 
 def active_ledger_in(dirpath):
@@ -241,62 +236,10 @@ def _team_sockets():
         return []
 
 
-def _budget(deadline, cap=5.0):
-    """Seconds a subprocess may run without overshooting the sweep
-    deadline — a between-calls check alone lets one wedged tmux run its
-    full timeout past the budget.
-
-    Deadlines are monotonic: a wall clock can step backwards (NTP,
-    a manual change) and would then hand back a budget that never
-    expires, defeating the bound entirely."""
-    if deadline is None:
-        return cap
-    return max(0.2, min(cap, deadline - time.monotonic()))
-
-
 def _tmux(sock, *args, deadline=None):
     return subprocess.run(["tmux", "-S", sock, *args],
                           capture_output=True, text=True,
                           timeout=_budget(deadline))
-
-
-def _cpu_seconds(text):
-    """Parse a ps cputime ([DD-]HH:MM:SS[.ff] or MM:SS[.ff]) into seconds."""
-    text = text.strip()
-    days = 0
-    if "-" in text:
-        day_part, text = text.split("-", 1)
-        try:
-            days = int(day_part)
-        except ValueError:
-            return None
-    try:
-        parts = [float(p) for p in text.split(":")]
-    except ValueError:
-        return None
-    if not parts:
-        return None
-    seconds = 0.0
-    for part in parts:
-        seconds = seconds * 60 + part
-    return days * 86400 + seconds
-
-
-def _is_claude_exe(path):
-    """True for the claude binary, including the versioned install path.
-
-    Teammates launched from ~/.local/share/claude/versions/2.1.246 have
-    an argv[0] whose BASENAME is `2.1.246`, not `claude`. The idle
-    sweep tested `basename.startswith("claude")`, so it skipped every
-    real teammate pane, wrote an empty state file, and reaped nothing —
-    measured in the wild as three teammates parked for 41 hours with a
-    1-hour threshold configured. `_is_teammate_session` above already
-    knew about the versioned form; this check did not.
-    """
-    base = os.path.basename(path)
-    return (base.startswith("claude")
-            or "claude-code" in path
-            or re.match(r"^\d+\.\d+", base) is not None)
 
 
 def reap_idle_teammates(session_id):
@@ -470,50 +413,6 @@ def _outside_fences(text):
     return "\n".join(kept)
 
 
-TEAMMATE_DETECT_BUDGET = 1.5  # seconds; the walk measures ~5ms in practice
-
-
-def _is_teammate_session(max_hops=12):
-    """True when this hook is running inside a named teammate.
-
-    Teammates are launched with `--agent-id`. The ledger belongs to the
-    CHAIR: holding a teammate's close on the chair's open items is pure
-    noise — it costs the teammate a turn and can eat the very report it
-    was about to deliver (observed in the wild). Walks up to the first
-    claude ancestor and answers from its argv, so the chair pays only a
-    couple of `ps` calls.
-
-    HARD-BUDGETED, because this runs BEFORE the guard prints its
-    decision: an unbounded walk of 12 hops at a 5s subprocess timeout
-    would be 60s against a 10s hook timeout, and the hook would be
-    killed with no decision emitted at all. On budget exhaustion we
-    answer False — "assume chair", so the guard still runs. The failure
-    costs a teammate one spurious reminder; the opposite default would
-    silently disable the guard for everyone.
-    """
-    deadline = time.monotonic() + TEAMMATE_DETECT_BUDGET
-    pid = os.getpid()
-    for _ in range(max_hops):
-        if time.monotonic() > deadline:
-            return False
-        try:
-            out = subprocess.run(
-                ["ps", "-o", "ppid=,command=", "-p", str(pid)],
-                capture_output=True, text=True, timeout=_budget(deadline),
-            ).stdout.strip()
-            bits = (out.splitlines()[0] if out else "").split(None, 1)
-            ppid = int(bits[0])
-        except Exception:
-            return False
-        command = bits[1] if len(bits) > 1 else ""
-        for tok in command.split():
-            base = os.path.basename(tok.strip("\"'"))
-            if base == "claude" or "claude-code" in tok or base.startswith("2."):
-                return "--agent-id" in command
-        if ppid <= 1:
-            return False
-        pid = ppid
-    return False
 
 
 def touch_session_files(session_id):
@@ -529,7 +428,8 @@ def touch_session_files(session_id):
     tasks sidecars, resetting the task counter and re-blocking a ledger
     that had already had its one reminder.
     """
-    for prefix in ("fable-orch-model", "fable-orch-stop", "fable-orch-tasks"):
+    for prefix in ("fable-orch-model", "fable-orch-stop", "fable-orch-tasks",
+                   "fable-orch-agents"):
         path = _tmp_json(prefix, session_id)
         if path and os.path.isfile(path):
             try:

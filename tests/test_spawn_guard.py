@@ -2,11 +2,13 @@ import json
 import time
 
 from conftest import (
+    APPROVED,
     CLARIFIED,
     LONG,
     SPAWN_GUARD as SCRIPT,
     VERY_LONG,
     is_deny,
+    reason,
     run_hook,
     run_tasks,
     spawn_payload,
@@ -132,13 +134,20 @@ def test_lowercase_ledger_name_counts(repo_dir):
 def test_ledger_must_be_a_whole_name_segment(repo_dir):
     # `LEDGER*.md` is a glob, not a prefix free-for-all: a file merely
     # starting with the letters must not be mistaken for a ledger.
+    #
+    # Name WHICH gate spoke. These bodies carry no `## Approved`, so a
+    # `ledgers.md` the guard WRONGLY accepts is still denied one gate
+    # later by the approval gate — a bare `is_deny` cannot tell the two
+    # apart, and deleting the segment rule left this test green.
     for name in ("ledgers.md", "ledgerish.md", "LEDGERS.md"):
         d = repo_dir / ".workflow"
         d.mkdir(parents=True, exist_ok=True)
         for old in d.glob("*.md"):
             old.unlink()
         (d / name).write_text(CLARIFIED + "- [ ] 1. item\n", encoding="utf-8")
-        assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir))), name
+        result = run_hook(SCRIPT, spawn_payload(repo_dir))
+        assert is_deny(result), name
+        assert "LEDGER GUARD" in reason(result), (name, reason(result))
 
 
 def test_separator_forms_all_count(repo_dir):
@@ -147,7 +156,8 @@ def test_separator_forms_all_count(repo_dir):
         d.mkdir(parents=True, exist_ok=True)
         for old in d.glob("*.md"):
             old.unlink()
-        (d / name).write_text(CLARIFIED + "- [ ] 1. item\n", encoding="utf-8")
+        (d / name).write_text(CLARIFIED + APPROVED + "- [ ] 1. item\n",
+                              encoding="utf-8")
         assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None, name
 
 
@@ -287,7 +297,8 @@ def test_parallel_task_creates_deny_exactly_once(repo_dir, tmp_path):
     denies = sum(1 for out, _ in outs if out.strip())
     assert denies == 1
     state = json.loads((tmp_path / "fable-orch-tasks-task-guard-session.json").read_text())
-    assert state == {"counts": {"denied": 8}, "denied": True, "denied_clarify": False}
+    assert state == {"counts": {"denied": 8}, "denied": True,
+                     "denied_clarify": False, "denied_approval": False}
 
 
 # --- stale-ledger re-arm: last week's finished ledger must not disarm ---

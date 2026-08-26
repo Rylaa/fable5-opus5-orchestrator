@@ -1,6 +1,6 @@
 {
   "name": "fable-orchestrator",
-  "description": "Fable 5-first multi-agent orchestration for Claude Code: a token-frugal chair profile with tier routing (Sonnet 5 carries the volume, Opus 5 the hard slices), chair-sized effort per worker, a Requirements Ledger, guard hooks that enforce the discipline, and automatic teammate reaping. A clarification phase grills an ambiguous request into the ledger before serious delegation.",
+  "description": "Fable 5-first multi-agent orchestration for Claude Code: a token-frugal chair profile with tier routing (Sonnet 5 carries the volume, Opus 5 the hard slices), chair-sized effort per worker, a Requirements Ledger, guard hooks that enforce the discipline, and automatic teammate reaping. A clarification phase grills an ambiguous request into the ledger before serious delegation, and an approval gate holds the first spawn until the user has agreed to what is about to be built. A watchdog reports agents that never started or stopped producing.",
   "owner": {
     "name": "Yusuf Demirkoparan",
     "url": "https://github.com/Rylaa"
@@ -9,7 +9,7 @@
     {
       "name": "orchestrator",
       "source": "./",
-      "description": "Fable 5-first multi-agent orchestration: a token-frugal chair profile with tier routing, a Requirements Ledger, guard hooks that enforce the discipline mechanically, and automatic teammate reaping. A clarification phase grills an ambiguous request into the ledger before serious delegation."
+      "description": "Fable 5-first multi-agent orchestration: a token-frugal chair profile with tier routing, a Requirements Ledger, guard hooks that enforce the discipline mechanically, and automatic teammate reaping. A clarification phase grills an ambiguous request into the ledger before serious delegation, and an approval gate holds the first spawn until the user has agreed to what is about to be built. A watchdog reports agents that never started or stopped producing."
     }
   ]
 }

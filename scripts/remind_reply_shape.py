@@ -18,10 +18,21 @@ Configuration:
 """
 import json
 import os
-import re
-import subprocess
 import sys
-import time
+# Loaded by path (a hook command, a test's spec_from_file_location),
+# so the scripts directory is not always on sys.path already.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from _shared import is_teammate_session as _is_teammate_session
+except Exception:
+    # `_shared.py` ships beside this file. A partial install, a half-copied
+    # plugin directory or an unreadable sibling leaves this hook with no
+    # helpers and therefore no decision it can make. Degrade to nothing at
+    # all: say nothing, deny nothing, block nothing, exit 0. Every hook here
+    # is fail-open by design, and an import error at module scope would be
+    # the one failure that ignores that, killing a turn with a traceback on
+    # every single prompt.
+    sys.exit(0)
 
 REMINDER = (
     "Reply shape (see the rules injected at session start): next action or "
@@ -29,52 +40,6 @@ REMINDER = (
     "five items in a list, concrete time estimates, no preamble and no "
     "closing pleasantry."
 )
-DETECT_BUDGET = 1.5  # seconds; the walk measures ~5ms in practice
-
-
-def _budget(deadline, cap=5.0):
-    if deadline is None:
-        return cap
-    return max(0.1, min(cap, deadline - time.monotonic()))
-
-
-def _is_claude_exe(path):
-    base = os.path.basename(path)
-    return (base.startswith("claude")
-            or "claude-code" in path
-            or re.match(r"^\d+\.\d+", base) is not None)
-
-
-def _is_teammate_session(max_hops=12):
-    """True when this hook runs inside a named teammate.
-
-    Same walk, same hard budget, and the same fail-open default as the
-    other guards: on exhaustion answer False, so the chair still gets
-    its reminder. A spurious reminder in a worker costs one line; the
-    opposite default would silently drop the rule for everyone.
-    """
-    deadline = time.monotonic() + DETECT_BUDGET
-    pid = os.getpid()
-    for _ in range(max_hops):
-        if time.monotonic() > deadline:
-            return False
-        try:
-            out = subprocess.run(
-                ["ps", "-o", "ppid=,command=", "-p", str(pid)],
-                capture_output=True, text=True, timeout=_budget(deadline),
-            ).stdout.strip()
-            bits = (out.splitlines()[0] if out else "").split(None, 1)
-            ppid = int(bits[0])
-        except Exception:
-            return False
-        command = bits[1] if len(bits) > 1 else ""
-        for tok in command.split():
-            if _is_claude_exe(tok.strip("\"'")):
-                return "--agent-id" in command
-        if ppid <= 1:
-            return False
-        pid = ppid
-    return False
 
 
 def main():

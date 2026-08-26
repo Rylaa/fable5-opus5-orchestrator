@@ -410,7 +410,10 @@ def test_teammate_detection_terminates_when_the_wall_clock_jumps_back():
     # runs to completion — inside a hook that has not emitted its
     # decision yet. Each faked `ps` costs a simulated second and the
     # wall clock rewinds a day on the first one.
-    mod = _load_script("ledger_guard_stop.py")
+    # The walk lives in _shared now, and that is where the clock has to
+    # be swapped: patching the guard's own globals leaves the shared
+    # module reading the real clock, and the test proves nothing.
+    mod = _load_script("_shared.py")
     clock = _FakeClock()
     calls = []
 
@@ -427,11 +430,11 @@ def test_teammate_detection_terminates_when_the_wall_clock_jumps_back():
     real_time, real_run = mod.time, mod.subprocess.run
     try:
         mod.time, mod.subprocess.run = clock, fake_run
-        assert mod._is_teammate_session() is False
+        assert mod.is_teammate_session() is False
     finally:
         mod.time, mod.subprocess.run = real_time, real_run
 
-    # TEAMMATE_DETECT_BUDGET is 1.5s and each hop costs 1s, so a
+    # DETECT_BUDGET_S is 1.5s and each hop costs 1s, so a
     # monotonic deadline stops the walk after 2 calls. A wall-clock one
     # would never expire and burn all 12 hops.
     assert len(calls) <= 3, f"walk was not capped: {len(calls)} ps calls"
@@ -462,14 +465,18 @@ def test_every_deadline_is_built_from_the_monotonic_clock():
                 and isinstance(sub.func.value, ast.Name)
                 and sub.func.value.id == "time"}
 
-    for name in ("ledger_guard_stop.py", "cleanup_session_cache.py"):
+    # _shared.py holds the hoisted `budget`; a file dropped from this list
+    # after its helper moved is how a check stops being able to fail.
+    for name in ("_shared.py", "ledger_guard_stop.py",
+                 "cleanup_session_cache.py"):
         tree = ast.parse((SCRIPTS / name).read_text(encoding="utf-8"))
         # _budget subtracts *from* a monotonic deadline, so it must read
         # the same clock. Reading the wall clock there does not merely
         # fail to bound — it collapses every budget to the 0.2s floor
         # and starves healthy subprocess calls.
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == "_budget":
+            if isinstance(node, ast.FunctionDef) and node.name in ("budget",
+                                                                   "_budget"):
                 assert clocks_read_in(node) == {"monotonic"}, (
                     f"{name}:{node.lineno} _budget reads "
                     f"{clocks_read_in(node)}, must read only monotonic")
