@@ -1,6 +1,6 @@
 # Fable Orchestrator
 
-[![CI](https://github.com/Rylaa/fable5-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/Rylaa/fable5-orchestrator/actions/workflows/ci.yml)
+[![CI](https://github.com/Rylaa/fable5-opus5-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/Rylaa/fable5-opus5-orchestrator/actions/workflows/ci.yml)
 
 **Keep Claude Fable 5 in the chair all day.** Fable plans and decides. Sonnet 5 carries the volume, Opus 5 takes the hard slices. Four hooks enforce it, so the discipline does not depend on the model remembering it.
 
@@ -14,7 +14,7 @@
 ## Install
 
 ```
-/plugin marketplace add Rylaa/fable5-orchestrator
+/plugin marketplace add Rylaa/fable5-opus5-orchestrator
 /plugin install orchestrator@fable-orchestrator
 ```
 
