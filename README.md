@@ -29,22 +29,9 @@ Skip step 2, 3, or 5 and a hook blocks the tool call and says what is missing.
 
 Fable 5 is the best model to run a session, and the fastest way to hit your usage limit. Every token it types itself is a token you cannot spend on thinking later.
 
-So the chair does not type. It plans, decides, and checks. Everything else goes to a cheaper model at the right effort level.
-
 ## Who runs what
 
-```
-        FABLE 5 — chair: plan, decide, check
-                        │
-    ┌───────────────────┼───────────────────┐
-    ▼                   ▼                   ▼
- SONNET 5            SONNET 5            OPUS 5
- bulk & scans        code & tests        hard slices
- low–medium          medium–high         high–max
-                                         + all security
-```
-
-Your Fable limit pays for the first box, plus one verification per close.
+Your Fable limit pays for the chair and nothing else, plus one check per close.
 
 ```
 ┌─────────────────────────────────────────┬─────────────────┬─────────────────────┐
@@ -89,6 +76,8 @@ Instructions get ignored. These do not.
 Never blocked: short spawns, forks, and workers (a worker's turn is never held on the chair's ledger).
 
 A ledger stops counting when every item is closed **and** it was last touched before this session. Retire one for good by renaming it `LEDGER-<topic>-archive.md`.
+
+Each gate covers one place work goes wrong: a question nobody asked, requirements dropped between your task and the plan, the chair doing a six-phase job alone on the most expensive model, and closing with items still open. Everything in between is judgment — and that belongs to the model, not to a regex.
 
 ## Step 2 in detail: the questions
 
@@ -147,8 +136,7 @@ Workers never get the profile. It tells its reader "you are the orchestrator", w
 Type `/model` and pick Opus. The hook swaps in the Opus profile: same rules, Opus takes over checking and escalation.
 
 - Switching mid-session costs a few lines, not the whole profile — a resumed session already has the rules and only gets what changed.
-- The swap takes effect at the **next** session start. `FABLE_ORCH_PROFILE=opus` makes it immediate.
-- Order of detection: the `FABLE_ORCH_PROFILE` pin, then the session's model, then your `/model` default in `settings.json`, then the last model this session saw.
+- The swap takes effect at the **next** session start. Set `FABLE_ORCH_PROFILE=opus` to skip the wait, or leave it on `auto`: detection reads the session's model, then your `/model` default in `settings.json`, then the last model this session saw.
 
 ## Watching the team work
 
@@ -191,7 +179,7 @@ The clarify gate is new, and no ledger written before this release has a `## Cla
 2. Add a `## Clarified` section at the top with what was already agreed.
 3. Or skip it for now: set `LEDGER_GUARD_CLARIFY=0` for that session.
 
-Finished ledgers need nothing. Rename them `LEDGER-<topic>-archive.md`.
+Finished ledgers need nothing.
 
 ## Tests
 
@@ -210,17 +198,6 @@ A second layer checks the *text*: the profiles stay under their size budget and 
 3. **Two chairs only** — Fable and Opus. Any other model gets the Fable profile.
 4. **A solo session that never creates tracker tasks slips through** the task gate. It counts tasks, not work.
 5. **Idle-worker detection is a guess.** A worker stuck in one long quiet wait can be killed mid-wait. Raise `FABLE_ORCH_TEAMMATE_IDLE_H` if that is your workload.
-
-## Why these four gates
-
-Work goes wrong in four places, and each gate covers one:
-
-1. **Before starting** — a question nobody asked. A worker cannot ask you, so the guess ships.
-2. **While starting** — requirements quietly dropped between your task and the plan.
-3. **Never starting** — the chair doing a six-phase job alone on the most expensive model.
-4. **While finishing** — closing with items still open.
-
-Everything in between is judgment. That belongs to the model, not to a regex.
 
 ## Manual install (without the plugin system)
 
