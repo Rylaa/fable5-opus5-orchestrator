@@ -85,10 +85,12 @@ answers, and no worker has to guess. Answers that arrive mid-task are
 appended, never merged away — a second `## Clarified` block lower in
 the file counts.
 
-Write answers as **plain bullets**. A numbered checkbox (`- [ ] 1.`)
-is a ledger item, so it closes the section instead of filling it, and
-a `## Clarified` inside a fenced code block is an example, not a
-record.
+Write answers as **plain bullets**. ANY checkbox line — `- [ ] 1.`,
+`- [x] Q1: yes` — reads as a ledger item and closes the section
+instead of filling it. A `## Clarified` inside a fenced code block is
+an example, not a record, and a divider or an HTML comment is not an
+answer. Sub-headings are fine: `### Round 2` stays inside the
+section.
 
 A genuinely unambiguous request still gets the section — one line:
 `- No ambiguity: <why the request answers itself>`.

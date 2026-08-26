@@ -280,15 +280,15 @@ def _seed_sidecar(tmp, body, session="task-guard-session"):
 def test_wrong_typed_sidecar_count_recovers(repo_dir, tmp_path):
     # Valid JSON, wrong member type: must coerce to 0 and keep exit 0 —
     # this exact shape used to crash the hook on every TaskCreate.
-    path = _seed_sidecar(tmp_path, '{"count": "x"}')
+    path = _seed_sidecar(tmp_path, '{"counts": {"denied": "x"}}')
     assert run_tasks(repo_dir, tmp_path, 1) == [None]
-    assert json.loads(path.read_text())["count"] == 1
+    assert json.loads(path.read_text())["counts"]["denied"] == 1
 
 
 def test_non_dict_sidecar_recovers(repo_dir, tmp_path):
     path = _seed_sidecar(tmp_path, "[1, 2]")
     assert run_tasks(repo_dir, tmp_path, 1) == [None]
-    assert json.loads(path.read_text())["count"] == 1
+    assert json.loads(path.read_text())["counts"]["denied"] == 1
 
 
 def test_non_object_stdin_never_crashes():
@@ -332,7 +332,7 @@ def test_parallel_task_creates_deny_exactly_once(repo_dir, tmp_path):
     denies = sum(1 for out, _ in outs if out.strip())
     assert denies == 1
     state = json.loads((tmp_path / "fable-orch-tasks-task-guard-session.json").read_text())
-    assert state == {"count": 8, "denied": True, "denied_clarify": False}
+    assert state == {"counts": {"denied": 8}, "denied": True, "denied_clarify": False}
 
 
 # --- stale-ledger re-arm: last week's finished ledger must not disarm ---

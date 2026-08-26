@@ -206,30 +206,64 @@ def test_clarified_constant_matches_the_documented_shape(repo_dir):
 
 # --- regressions from the v0.16.0 review: what counts as an ANSWER ---
 
-def test_checkbox_shaped_answers_count_as_content(repo_dir):
-    # A chair writing its answers in the ledger's own checkbox idiom has
-    # clarified the work. Denying that shape told it the section it just
-    # filled in was empty — a deny with no action behind it.
+def test_any_checkbox_ends_the_section(repo_dir):
+    # Answers are plain bullets. Recognising only NUMBERED checkboxes
+    # let an empty heading above ordinary `- [ ] fix login` items pass
+    # as if the ledger's own requirements were the answers — a silent
+    # bypass of the whole gate. Every checkbox form ends the section,
+    # and the deny text says so instead of claiming the file is empty.
+    for bullet in ("- [ ] 1. item", "* [x] 2. done", "+ [~] 3. deferred: ok",
+                   "- [x] V. verified", "- [ ] fix login", "- [x] Q1: beside it",
+                   "-  [ ] 1. two spaces", "- [>] 1. odd marker"):
+        unclarified(repo_dir, f"## Clarified\n\n{bullet}\n")
+        result = run_hook(SCRIPT, spawn_payload(repo_dir))
+        assert is_deny(result), bullet
+        assert "PLAIN BULLETS" in reason(result), bullet
+
+
+def test_open_checkbox_answers_would_break_the_close_guard(repo_dir):
+    # `- [ ] Q2: still waiting` passed the clarify gate while matching
+    # OPEN_ITEM_RE, so the ledger could never go stale and every close
+    # was held forever. Ending the section on any checkbox closes it.
     unclarified(repo_dir,
-                "## Clarified\n"
-                "- [x] Q1: replace the old exporter? -> beside it, one release\n"
-                "- [~] Assumption: no backfill\n\n" + ITEMS)
+                "## Clarified\n- [ ] Q2: still waiting on the user\n\n" + ITEMS)
+    assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
+
+
+def test_sub_heading_stays_inside_the_section(repo_dir):
+    # The protocol appends later rounds, and `### Round 1` is how a
+    # chair files them. Ending the section at ANY heading denied a
+    # ledger full of answers, with nothing in the message to act on.
+    unclarified(repo_dir,
+                "## Clarified\n### Round 1\n- Q1: replace it? -> beside it\n\n" + ITEMS)
     assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
 
 
-def test_numbered_checkbox_still_ends_the_section(repo_dir):
-    # `- [ ] 1.` is a ledger ITEM, so an empty heading above the items
-    # must not read the requirements back as answers.
-    for bullet in ("- [ ] 1. item", "* [x] 2. done", "+ [~] 3. deferred: ok",
-                   "- [x] V. verified"):
-        unclarified(repo_dir, f"## Clarified\n\n{bullet}\n")
-        assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir))), bullet
+def test_same_level_heading_ends_the_section(repo_dir):
+    unclarified(repo_dir, "## Clarified\n\n## Items\n- something\n" + ITEMS)
+    assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
 
 
 def test_setext_heading_does_not_count_as_content(repo_dir):
     # The other markdown heading syntax ends the section too.
     unclarified(repo_dir, "## Clarified\n\nRequirements\n------------\n" + ITEMS)
     assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
+
+
+def test_divider_under_the_one_line_escape_is_fine(repo_dir):
+    # `- No ambiguity: <why>` is the line the deny text asks for. A
+    # `---` after it is a thematic break, not a setext underline, and
+    # denying it looped the chair against its own instructions.
+    unclarified(repo_dir,
+                "## Clarified\n- No ambiguity: the rename is exact\n---\n\n" + ITEMS)
+    assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None
+
+
+def test_punctuation_alone_is_not_an_answer(repo_dir):
+    # Typing the heading and a divider is the "clarified nothing" case.
+    for filler in ("---", "***", "___", "<!-- TODO fill this in -->", "|  |"):
+        unclarified(repo_dir, f"## Clarified\n\n{filler}\n\n" + ITEMS)
+        assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir))), filler
 
 
 def test_fenced_example_is_not_a_record(repo_dir):
@@ -270,10 +304,11 @@ def test_clarify_nudge_does_not_spend_the_ledger_nudge(repo_dir, tmp_path):
     assert "CLARIFY GUARD" in results[2]["hookSpecificOutput"]["permissionDecisionReason"]
 
     shutil.rmtree(repo_dir / ".workflow")          # now the ledger is gone
-    more = run_tasks(repo_dir, tmp_path, 2)
-    assert is_deny(more[0]), "the missing-ledger nudge was silenced by the clarify one"
-    assert "LEDGER GUARD" in more[0]["hookSpecificOutput"]["permissionDecisionReason"]
-    assert more[1] is None                          # still once per session, per kind
+    more = run_tasks(repo_dir, tmp_path, 4)
+    assert more[0] is None and more[1] is None      # its own two free tasks
+    assert is_deny(more[2]), "the missing-ledger nudge was silenced by the clarify one"
+    assert "LEDGER GUARD" in more[2]["hookSpecificOutput"]["permissionDecisionReason"]
+    assert more[3] is None                          # still once per session, per kind
 
 
 # --- metrics and the summary they feed ---
@@ -306,3 +341,118 @@ def test_clarify_metrics_reach_the_stats_summary(repo_dir, tmp_path):
     # blocked session as "0 denied".
     assert "1 denied for a missing `## Clarified` record" in stats.stdout
     assert "1 denied for clarification" in stats.stdout
+
+
+# --- regressions from the v0.16.0 review, round two ---
+
+def test_tilde_fence_is_stripped_like_a_backtick_one(repo_dir):
+    unclarified(repo_dir,
+                "## Notes\n~~~markdown\n## Clarified\n- Q1: <q> -> <a>\n~~~\n\n" + ITEMS)
+    assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
+
+
+def test_longer_fence_wraps_a_shorter_one(repo_dir):
+    unclarified(repo_dir,
+                "## Notes\n````markdown\n```\n## Clarified\n- Q1: <q>\n```\n````\n\n" + ITEMS)
+    assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir)))
+
+
+def test_fenced_open_item_cannot_keep_a_finished_ledger_fresh(repo_dir, tmp_path):
+    # The staleness scan read RAW text while the clarify scan stripped
+    # fences, so a closed ledger QUOTING the `- [ ] 1. <item>` format
+    # looked permanently live and disarmed every gate in that repo.
+    import os
+    write_marker(tmp_path, time.time())
+    ledger = write_ledger(
+        repo_dir,
+        "- [x] 1. done\n- [x] V. verified\n\n"
+        "Format reminder:\n\n```markdown\n- [ ] 1. <item>\n```\n")
+    old = time.time() - 3600
+    os.utime(ledger, (old, old))
+    result = run_hook(SCRIPT, spawn_payload(repo_dir), tmpdir=tmp_path)
+    assert is_deny(result) and "previous session" in reason(result)
+
+
+def test_plus_bullet_stays_out_of_the_open_item_dialect(repo_dir, tmp_path):
+    # The close guard counts `-` and `*` only. A spawn guard that also
+    # counted `+` kept a `+`-bulleted ledger non-stale forever while its
+    # close was never held — one file, two dialects.
+    import os
+    write_marker(tmp_path, time.time())
+    ledger = write_ledger(repo_dir, "+ [ ] 1. open\n")
+    old = time.time() - 3600
+    os.utime(ledger, (old, old))
+    assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir), tmpdir=tmp_path))
+
+
+# --- the deny texts have to be actionable in ONE round trip ---
+
+def test_ledger_deny_names_the_clarified_section(repo_dir):
+    # Following the old text exactly — write the numbered ledger, re-spawn —
+    # walked straight into a clarify deny. Two round trips for obeying.
+    result = run_hook(SCRIPT, spawn_payload(repo_dir))
+    assert is_deny(result) and "`## Clarified`" in reason(result)
+
+
+def test_task_deny_names_the_clarified_section(repo_dir, tmp_path):
+    results = run_tasks(repo_dir, tmp_path, 3)
+    assert "`## Clarified`" in results[2]["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_clarify_deny_offers_the_archive_remedy(repo_dir):
+    # An abandoned ledger with one never-closed item is never "stale",
+    # so it falls through to the clarify deny — which used to tell the
+    # chair to write this session's answers into a foreign file.
+    unclarified(repo_dir, "- [ ] 2. something from six months ago\n")
+    result = run_hook(SCRIPT, spawn_payload(repo_dir))
+    assert is_deny(result) and "archive" in reason(result).lower()
+
+
+# --- workers cannot satisfy these gates, so they are not held to them ---
+
+def test_teammate_spawns_are_not_gated(repo_dir, tmp_path):
+    import os
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ps = bin_dir / "ps"
+    ps.write_text(
+        "#!/usr/bin/env python3\n"
+        "print('1 claude --agent-id worker@session-t --agent-name worker')\n",
+        encoding="utf-8",
+    )
+    os.chmod(ps, 0o755)
+    env = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+    # No ledger at all: the chair would be denied, the worker is not.
+    assert run_hook(SCRIPT, spawn_payload(repo_dir), env_extra=env, tmpdir=tmp_path) is None
+
+
+def test_chair_spawns_are_still_gated(repo_dir, tmp_path):
+    import os
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ps = bin_dir / "ps"
+    ps.write_text(
+        "#!/usr/bin/env python3\n"
+        "print('1 claude --dangerously-skip-permissions')\n",
+        encoding="utf-8",
+    )
+    os.chmod(ps, 0o755)
+    env = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+    assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir), env_extra=env, tmpdir=tmp_path))
+
+
+def test_each_blocker_gets_its_own_free_tasks(repo_dir, tmp_path):
+    # Counting both blockers together meant the second one to appear
+    # was already at the limit: a chair that obeyed the ledger nudge
+    # drew a clarify deny on its very next task.
+    import shutil
+    results = run_tasks(repo_dir, tmp_path, 3)          # no ledger at all
+    assert is_deny(results[2])
+    assert "LEDGER GUARD" in results[2]["hookSpecificOutput"]["permissionDecisionReason"]
+
+    unclarified(repo_dir)                               # the chair complies
+    more = run_tasks(repo_dir, tmp_path, 3)
+    assert more[0] is None and more[1] is None, "clarify budget started spent"
+    assert is_deny(more[2])
+    assert "CLARIFY GUARD" in more[2]["hookSpecificOutput"]["permissionDecisionReason"]
+    shutil.rmtree(repo_dir / ".workflow")

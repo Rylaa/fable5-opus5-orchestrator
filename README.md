@@ -23,7 +23,7 @@ Already on an older version? See [Upgrading to v0.16.0](#upgrading-to-v0160).
 4. **Claude hands the work out** — Sonnet 5 for volume, Opus 5 for the hard parts.
 5. **One fresh agent checks the whole result** before anything is called done.
 
-Skip step 2, 3, or 5 and a hook blocks the tool call and says what is missing.
+Skip step 2 or 3 and a hook blocks the tool call and says what is missing. Skip step 5 and the close guard holds the turn while `V.` is still open.
 
 ## Why
 
@@ -68,14 +68,16 @@ Instructions get ignored. These do not.
 │   │             │ answers written down          │ section with real content      │
 │ 2 │ Spawn       │ spawn prompt over 1500 chars, │ writing `.workflow/LEDGER.md`  │
 │   │             │ no ledger at all              │ with numbered checkbox items   │
-│ 3 │ Task list   │ 3rd tracker task, still no    │ same — write the ledger and    │
-│   │             │ ledger (blocks once)          │ hand the phases to workers     │
+│ 3 │ Task list   │ 3rd tracker task against a    │ whatever the row above wants;  │
+│   │             │ ledger gate 1 or 2 would block│ once per kind of block         │
 │ 4 │ Close       │ turn ends with open items     │ finishing them, or saying in   │
 │   │             │ (blocks once per session)     │ one line why not               │
 └───┴─────────────┴───────────────────────────────┴────────────────────────────────┘
 ```
 
-Never blocked: short spawns, forks, and workers (a worker's turn is never held on the chair's ledger).
+Gates 1-3 read the spawn `prompt`, or the `script` when you call Workflow — an orchestration script is a delegation plan like any other.
+
+Never blocked: short spawns, forks, and workers. Workers are skipped on purpose: they cannot reach you to clarify anything and the ledger is not theirs.
 
 A ledger stops counting when every item is closed **and** it was last touched before this session. Retire one for good by renaming it `LEDGER-<topic>-archive.md`.
 
@@ -102,7 +104,7 @@ What lands in your ledger:
 - Assumption: existing exports are not backfilled — say so if wrong
 ```
 
-Plain bullets. A numbered checkbox (`- [ ] 1.`) is a ledger item, so it ends the section instead of filling it. A `## Clarified` inside a code fence is an example, not a record.
+Plain bullets. Any checkbox line — `- [ ] 1.`, `- [x] Q1: yes` — is read as a ledger item and ends the section instead of filling it. A `## Clarified` inside a code fence is an example, not a record, and a divider on its own is not an answer. Sub-headings stay inside the section, so `### Round 2` is fine.
 
 Nothing to ask? The section is still written, as one line: `- No ambiguity: <why>`.
 
@@ -197,9 +199,10 @@ A second layer checks the *text*: the profiles stay under their size budget and 
 
 1. **Hooks check shape, not quality.** A thin ledger passes. A one-line "no ambiguity" passes. Checking harder would just teach the model to write filler.
 2. **Ticking `- [x]` without checking is possible.** The box is not proof.
-3. **Two chairs only** — Fable and Opus. Any other model gets the Fable profile.
-4. **A solo session that never creates tracker tasks slips through** the task gate. It counts tasks, not work.
-5. **Idle-worker detection is a guess.** A worker stuck in one long quiet wait can be killed mid-wait. Raise `FABLE_ORCH_TEAMMATE_IDLE_H` if that is your workload.
+3. **A `## Clarified` section is not scoped to a session.** Once written it satisfies gate 1 for the life of that file, including for work added to the ledger days later. Start a new ledger for a new task.
+4. **Two chairs only** — Fable and Opus. Any other model gets the Fable profile.
+5. **A solo session that never creates tracker tasks slips through** the task gate. It counts tasks, not work.
+6. **Idle-worker detection is a guess.** A worker stuck in one long quiet wait can be killed mid-wait. Raise `FABLE_ORCH_TEAMMATE_IDLE_H` if that is your workload.
 
 ## Manual install (without the plugin system)
 

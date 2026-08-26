@@ -61,6 +61,7 @@ Configuration (all optional):
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -72,15 +73,26 @@ except ImportError:  # non-POSIX: run unlocked, best effort
 
 DEFAULT_THRESHOLD = 1500
 DEFAULT_TASK_LIMIT = 3
-OPEN_ITEM_RE = r"^\s*[-*+] \[ \](?:\s.*)?$"
-CLARIFIED_HEADING_RE = r"^[ \t]{0,3}#{1,6}[ \t]*clarified\b[^\n]*$"
-ATX_HEADING_RE = r"^[ \t]{0,3}#{1,6}(?:[ \t]|$)"
-SETEXT_UNDERLINE_RE = r"^[ \t]{0,3}(?:=+|-{2,})[ \t]*$"
-# A NUMBERED checkbox — `- [ ] 3.` or `- [x] V.` — is a ledger item and ends
-# the Clarified section. An unnumbered one (`- [x] Q1: yes`) is an answer
-# written in checkbox form and still counts as content: denying that shape
-# would tell the chair its filled-in section is empty.
-LEDGER_ITEM_RE = r"^\s*[-*+] \[[ xX~]\][ \t]*(?:\d+|[Vv])\."
+# The close guard's dialect, character for character: `-` and `*` only.
+# A `+` bullet is deliberately outside it, and a guard that counted `+`
+# while the close guard did not would keep a `+`-bulleted ledger
+# permanently non-stale while its close was never held.
+OPEN_ITEM_RE = r"^\s*[-*] \[ \](?:\s.*)?$"
+CLARIFIED_HEADING_RE = r"^[ \t]{0,3}(#{1,6})[ \t]*clarified\b[^\n]*$"
+ATX_HEADING_RE = r"^[ \t]{0,3}(#{1,6})(?:[ \t]|$)"
+SETEXT_UNDERLINE_RE = r"^[ \t]{0,3}(?:=+|-+)[ \t]*$"
+# ANY checkbox ends the Clarified section: the numbered items live
+# directly below it with no heading in between, and a rule that only
+# recognised `- [ ] 3.` let an empty heading over unnumbered items pass
+# as if the requirements were the answers. Answers are plain bullets;
+# the deny text says so.
+CHECKBOX_RE = r"^\s*[-*+][ \t]+\[[^\]]?\]"
+# Lines that are punctuation rather than an answer: thematic breaks,
+# HTML comments, and table rules. A chair that typed the heading and a
+# divider has still clarified nothing.
+NON_ANSWER_RE = (r"^[ \t]{0,3}(?:(?:[-*_][ \t]*){3,}"
+                 r"|<!--.*"
+                 r"|\|[ \t|:-]*\|[ \t]*)$")
 
 
 def _metric(event, session_id=None, **extra):
@@ -139,7 +151,11 @@ def _bump_task_count(path, key="denied"):
     `key` picks WHICH one-per-session budget is being spent: the
     missing/stale-ledger nudge ("denied") and the clarify nudge
     ("denied_clarify") are separate reminders that say different
-    things, so spending one must not silence the other.
+    things, so spending one must not silence the other. The COUNT is
+    per key for the same reason — a shared counter meant the blocker
+    that appeared second got none of the documented free tasks, so a
+    chair that obeyed the first nudge was denied again on its very
+    next task.
     """
     try:
         f = open(path, "a+", encoding="utf-8")
@@ -158,11 +174,16 @@ def _bump_task_count(path, key="denied"):
             state = {}
         if not isinstance(state, dict):
             state = {}
+        counts = state.get("counts")
+        if not isinstance(counts, dict):
+            counts = {}
         try:
-            count = int(state.get("count") or 0)
-        except (TypeError, ValueError):
+            count = int(counts.get(key) or 0)
+        except (TypeError, ValueError, OverflowError):
             count = 0
         count += 1
+        counts = {k: v for k, v in counts.items() if k in ("denied", "denied_clarify")}
+        counts[key] = count
         denied_before = bool(state.get(key))
         deny_now = count >= task_limit() and not denied_before
         flags = {k: bool(state.get(k)) for k in ("denied", "denied_clarify")}
@@ -170,7 +191,7 @@ def _bump_task_count(path, key="denied"):
         try:
             f.seek(0)
             f.truncate()
-            json.dump(dict(count=count, **flags), f)
+            json.dump(dict(counts=counts, **flags), f)
             f.flush()
         except (OSError, ValueError):
             pass
@@ -229,11 +250,13 @@ def guard_task_create(data):
         f"{_stale_note(ledger, blocker)}. "
         "Rule 0's hard cap: work that needs a task list of 3+ items is "
         "OVER the orchestration threshold, and an approved plan is NOT "
-        "an exemption. Write the numbered Requirements Ledger to "
-        "./.workflow/LEDGER.md now, then delegate implementation to "
-        "sonnet workers citing ledger items instead of implementing "
-        "the phases yourself. Re-issue this task afterwards — this "
-        "reminder fires once per session."
+        "an exemption. Write the Requirements Ledger to "
+        "./.workflow/LEDGER.md now — a `## Clarified` section carrying "
+        "the answers you got from the user, then the numbered "
+        "`- [ ] N. <item>` lines — and delegate implementation to sonnet "
+        "workers citing ledger items instead of implementing the phases "
+        "yourself. Re-issue this task afterwards — this reminder fires "
+        "once per session."
     )
 
 
@@ -358,7 +381,11 @@ def ledger_satisfies(ledger, session_id, text=None):
         text = read_ledger(ledger)
     if text is None:
         return True
-    if re.findall(OPEN_ITEM_RE, text, flags=re.M):
+    # Fences stripped, exactly like the close guard: a ledger that
+    # QUOTES the `- [ ] 1. <item>` format in a markdown example is not
+    # a ledger with an open item, and counting one there kept finished
+    # ledgers permanently non-stale.
+    if re.findall(OPEN_ITEM_RE, "\n".join(_outside_fences(text)), flags=re.M):
         return True
     started = _session_started(session_id)
     if started is None:
@@ -369,6 +396,51 @@ def ledger_satisfies(ledger, session_id, text=None):
         return True
 
 
+TEAMMATE_DETECT_BUDGET = 1.5  # seconds; the walk measures ~5ms in practice
+
+
+def _budget(deadline, cap=5.0):
+    if deadline is None:
+        return cap
+    return max(0.1, min(cap, deadline - time.monotonic()))
+
+
+def _is_teammate_session(max_hops=12):
+    """True when this hook is running inside a named teammate.
+
+    These gates are CHAIR discipline. A teammate cannot reach the user
+    to clarify anything, cannot be given the clarify skill (the
+    injector skips it), and does not own the chair's ledger — denying
+    its spawns tells it to do something structurally impossible. The
+    close guard and the injector already skip workers; this one did
+    not. Same walk, same hard budget, same fail-open default: on
+    exhaustion answer False so the guard still runs for the chair.
+    """
+    deadline = time.monotonic() + TEAMMATE_DETECT_BUDGET
+    pid = os.getpid()
+    for _ in range(max_hops):
+        if time.monotonic() > deadline:
+            return False
+        try:
+            out = subprocess.run(
+                ["ps", "-o", "ppid=,command=", "-p", str(pid)],
+                capture_output=True, text=True, timeout=_budget(deadline),
+            ).stdout.strip()
+            bits = (out.splitlines()[0] if out else "").split(None, 1)
+            ppid = int(bits[0])
+        except Exception:
+            return False
+        command = bits[1] if len(bits) > 1 else ""
+        for tok in command.split():
+            base = os.path.basename(tok.strip("\"'"))
+            if base == "claude" or "claude-code" in tok or base.startswith("2."):
+                return "--agent-id" in command
+        if ppid <= 1:
+            return False
+        pid = ppid
+    return False
+
+
 def clarify_gate_on():
     """The Rule 0.5 gate, on unless LEDGER_GUARD_CLARIFY is exactly "0"."""
     return (os.environ.get("LEDGER_GUARD_CLARIFY") or "").strip() != "0"
@@ -377,38 +449,68 @@ def clarify_gate_on():
 def _outside_fences(text):
     """Drop fenced code blocks — a ``` example section is not a record.
 
-    Same rule and same implementation as the close guard's helper: a
-    markdown example of what `## Clarified` should look like must not
-    satisfy the gate the example is teaching.
+    Tracks the fence character and its length, so a ~~~ block counts
+    the same as a ``` one and a four-backtick block can quote a
+    three-backtick example without the inner fence closing the outer.
+    A markdown example of what `## Clarified` should look like must not
+    satisfy the gate that example is teaching.
     """
-    kept, fenced = [], False
+    kept = []
+    fence = None                      # (char, length) while inside a block
     for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-            continue
-        if not fenced:
+        stripped = line.lstrip()
+        char = stripped[:1]
+        if char in ("`", "~"):
+            run = len(stripped) - len(stripped.lstrip(char))
+            if run >= 3:
+                if fence is None:
+                    fence = (char, run)
+                    continue
+                if char == fence[0] and run >= fence[1]:
+                    fence = None
+                    continue
+        if fence is None:
             kept.append(line)
     return kept
 
 
-def _section_has_content(lines, index):
+def _is_answer_line(lines, index):
+    """True when lines[index] is a real answer, not punctuation.
+
+    A divider, an HTML comment, or a table rule is not clarification.
+    Neither is the text half of a setext heading — but only when it is
+    a paragraph: `- No ambiguity: ...` followed by a `---` divider is a
+    LIST ITEM plus a break, and the deny text tells chairs to write
+    exactly that line.
+    """
+    line = lines[index]
+    if not line.strip():
+        return False
+    if re.match(NON_ANSWER_RE, line):
+        return False
+    nxt = lines[index + 1] if index + 1 < len(lines) else ""
+    if re.match(SETEXT_UNDERLINE_RE, nxt) and not re.match(r"^\s*[-*+>]", line):
+        return False                  # a setext heading, not an answer
+    return True
+
+
+def _section_has_content(lines, index, level):
     """True when the section starting at `index` carries a real answer.
 
-    The section ends at the next heading — ATX (`## X`) or setext (a
-    line underlined with === or ---) — or at the first NUMBERED ledger
-    item, because the documented layout puts `## Clarified` directly
-    above the items with no heading between them. Without those stops
-    an empty heading would read the ledger's own requirements back as
-    answers.
+    It ends at the first checkbox — the numbered items sit directly
+    below with no heading between — or at a heading of the SAME or a
+    shallower level. A DEEPER sub-heading is inside the section, not
+    after it: the protocol appends later rounds, and `### Round 2` is
+    how a chair naturally files them.
     """
     while index < len(lines):
         line = lines[index]
-        if re.match(ATX_HEADING_RE, line) or re.match(LEDGER_ITEM_RE, line):
+        if re.match(CHECKBOX_RE, line):
             return False
-        if line.strip():
-            nxt = lines[index + 1] if index + 1 < len(lines) else ""
-            if re.match(SETEXT_UNDERLINE_RE, nxt):
-                return False        # this line is a setext heading, not an answer
+        atx = re.match(ATX_HEADING_RE, line)
+        if atx and len(atx.group(1)) <= level:
+            return False
+        if _is_answer_line(lines, index):
             return True
         index += 1
     return False
@@ -433,11 +535,12 @@ def ledger_clarified(ledger, text=None):
     if text is None:
         return True
     lines = _outside_fences(text)
-    starts = [i for i, line in enumerate(lines)
-              if re.match(CLARIFIED_HEADING_RE, line, flags=re.I)]
+    starts = [(i, len(m.group(1)))
+              for i, line in enumerate(lines)
+              for m in [re.match(CLARIFIED_HEADING_RE, line, flags=re.I)] if m]
     if not starts:
         return False
-    return any(_section_has_content(lines, i + 1) for i in starts)
+    return any(_section_has_content(lines, i + 1, level) for i, level in starts)
 
 
 def ledger_state(data):
@@ -483,11 +586,14 @@ def _clarify_reason(ledger, lead):
         "last answer, until nothing that would change the work is still open. "
         "Then record the answers and any explicit assumptions under "
         "`## Clarified` at the TOP of the ledger and re-issue this call. Load "
-        "`orchestrator:clarify` for the protocol. Answers are plain bullets: a "
-        "NUMBERED checkbox (`- [ ] 1.`) reads as a ledger item and ends the "
-        "section, and a fenced example does not count. If the request genuinely "
-        "is unambiguous, say so in one line under the heading "
-        "('- No ambiguity: <why>') — the section is never skipped. "
+        "`orchestrator:clarify` for the protocol. Answers are PLAIN BULLETS: "
+        "a checkbox line (`- [ ]`, `- [x]`) reads as a ledger item and ends "
+        "the section, and a fenced example, a divider, or a bare heading does "
+        "not count as content. If the request genuinely is unambiguous, say so "
+        "in one line under the heading ('- No ambiguity: <why>') — the section "
+        "is never skipped. If this ledger belongs to ABANDONED or unrelated "
+        "work, do not write into it: archive it as "
+        "LEDGER-<topic>-archive.md and start a fresh one for this task. "
         "LEDGER_GUARD_CLARIFY=0 disables this gate."
     )
 
@@ -503,6 +609,9 @@ def _deny(reason):
 
 
 def _guard(data):
+    if _is_teammate_session():
+        return
+
     if (data.get("tool_name") or "") == "TaskCreate":
         guard_task_create(data)
         return
@@ -553,13 +662,15 @@ def _guard(data):
         f"LEDGER GUARD: this looks like a detailed delegation "
         f"({what} > {limit} chars) but no active ledger exists in "
         "any .workflow/ from the working directory up to the repo root"
-        f"{_stale_note(ledger, blocker)}. Per Dynamic Workflow Rule 1, first "
-        "write the numbered Requirements Ledger to ./.workflow/LEDGER.md "
-        "(checkbox format: '- [ ] N. <item>'), then re-spawn citing "
-        "which ledger items each agent covers. If this is genuinely a "
-        "small single-phase task, do it directly; if it is "
-        "multi-phase, write the ledger and delegate — never keep "
-        "multi-phase work solo."
+        f"{_stale_note(ledger, blocker)}. Per Dynamic Workflow Rules 0.5 "
+        "and 1, write ./.workflow/LEDGER.md with BOTH parts before you "
+        "re-spawn: a `## Clarified` section holding the answers you got "
+        "from the user (plain bullets, not checkboxes), then the numbered "
+        "items in checkbox format ('- [ ] N. <item>'). A ledger without "
+        "the first part is denied again by the clarify gate. Then re-spawn "
+        "citing which ledger items each agent covers. If this is genuinely "
+        "a small single-phase task, do it directly; if it is multi-phase, "
+        "write the ledger and delegate — never keep multi-phase work solo."
     )
 
 

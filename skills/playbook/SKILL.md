@@ -69,8 +69,11 @@ stacked (the plugin reaps forgotten panes).
 ## Verification procedure
 
 The verifier is FRESH — it has not worked on the task. Give it the
-original request, the ledger path, and the work-product paths
-(diffs, reports — not the raw scratch dump). It reads from disk; its
+original request, the ledger path, and THE DIFF — a concrete
+`git diff <base>..HEAD` command or a patch file on disk, plus the
+report paths. Never the raw scratch dump, and never "go find what
+changed": a verifier that has to locate the change spends its budget
+looking instead of checking. It reads from disk; its
 only job is to find what is missing, wrong, or unaddressed, item by
 item — and only it closes the `V.` ledger item. It is ONE call over
 the whole change, not one per phase, and the chair sizes its effort

@@ -26,8 +26,9 @@ Ambiguity that would change the work gets ASKED — ONE question per
 message, each derived from the last answer, until the scan is clean;
 never batched, never capped, and never asked when the repo answers it.
 Record answers and explicit assumptions under `## Clarified` at the TOP
-of the ledger, as plain bullets; the spawn guard denies serious
-delegation without it. Detail: `orchestrator:clarify`.
+of the ledger, as plain bullets — never checkboxes, those read as
+items. Spawn and task gates deny without it. Detail:
+`orchestrator:clarify`.
 
 ## Rule 1 — Requirements Ledger (hook-enforced)
 Before any delegation write every requirement, constraint, and edge
@@ -37,9 +38,9 @@ case to ./.workflow/LEDGER*.md — hooks see only that path. One
 always `- [ ] V. fresh-eyes verification passed`, closed only by the
 verifier. Phases cite item numbers; append discoveries; ambiguity →
 ASK THE USER. Write the ledger + first worker wave in ONE message.
-Hooks: >1500-char spawns blocked while the ledger is missing; 3rd
-ledgerless tracker task denied once; first close held while any
-`- [ ]` remains.
+Hooks: big spawns and the 3rd tracker task are denied while the ledger
+is missing, stale, or has no `## Clarified`; first close held while
+any `- [ ]` remains.
 
 ## Rule 2 — filesystem is shared memory
 Bulk lives in ./.workflow/scratch/; agents return paths + briefs,
@@ -47,8 +48,10 @@ never dumps. Reports follow the playbook contract: ≤40 lines, any
 verbatim over 10 lines goes to scratch + path.
 
 ## Rule 3 — spawn discipline
-Parallel EDITORS get `isolation: "worktree"` each; spawn independent
-agents in ONE message. BATCH similar mechanical lookups into ONE
+Independent phases go out TOGETHER in ONE message — never serialize
+what has no dependency; only a phase that consumes an earlier phase's
+output waits for it. Parallel EDITORS get `isolation: "worktree"`
+each. BATCH similar mechanical lookups into ONE
 worker — five greps is one agent, not five. NAME every substantive
 worker (the user watches tmux panes live); only sub-minute lookups
 stay unnamed. Steer via SendMessage; on accepted report dismiss with
@@ -57,7 +60,7 @@ stay unnamed. Steer via SendMessage; on accepted report dismiss with
 ## Routing & effort
 Tier NAMES only — sonnet/opus, never dated IDs, no haiku; the fable
 tier is RESTING, its roles fall to opus. The CHAIR sizes every
-spawn's effort (low..max) to the work in front of it, judged on
+spawn's effort (low/medium/high/xhigh/max) to the work in front of it, judged on
 QUALITY and SPEED only — never on what the call costs. The saving
 comes from delegating, not from underpowering a worker; a job that
 needs `max` gets `max`, a mechanical sweep does not. Unsure → round
@@ -73,11 +76,11 @@ the user — never reword past a classifier.
 ## Verification — mandatory before closing
 EVERY close gets a FRESH opus verifier that did not build the work:
 ONE bounded call that scans the WHOLE change, not one per phase.
-Only it closes `V.`. Size its effort like any other spawn — by what
-the check needs to be right and fast. Findings become new phases;
+Only it closes `V.`; size its effort like any other spawn.
+Findings become new phases;
 re-verify; CAP 3 cycles, then report open items.
 
 ## Hygiene
 Prefer per-task sessions — ledger + scratch live on disk, so /clear
 between tasks is cheap. Read short decisive sources yourself; keep
-outputs minimal; parallelize independent calls.
+outputs minimal.
