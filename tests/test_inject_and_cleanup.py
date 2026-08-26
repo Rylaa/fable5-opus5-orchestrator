@@ -15,6 +15,7 @@ def context_of(result):
 CORES = ("dynamic-workflow-fable.md", "dynamic-workflow-opus.md")
 SWITCHES = ("profile-switch-to-fable.md", "profile-switch-to-opus.md")
 PLAYBOOK = ("skills", "playbook", "SKILL.md")
+CLARIFY = ("skills", "clarify", "SKILL.md")
 
 
 def _instr(name):
@@ -23,6 +24,10 @@ def _instr(name):
 
 def _playbook():
     return REPO.joinpath(*PLAYBOOK).read_text(encoding="utf-8")
+
+
+def _clarify():
+    return REPO.joinpath(*CLARIFY).read_text(encoding="utf-8")
 
 
 def _flat(text):
@@ -43,9 +48,14 @@ def test_cores_stay_on_the_token_diet():
     # 10,069 and silently stopped reaching the chair at all). v0.15.0
     # moved the detail to the playbook skill, which loads on demand —
     # the core is a summary now, and this pin keeps it one.
+    #
+    # v0.16.0 raised the pin from 4000 to 4400 to seat Rule 0.5: the
+    # cores were at 3744/3781 and the clarify summary is ~370 chars, so
+    # the old pin would have passed only with no headroom left. 4.4k is
+    # still far under the 10k hook cap that made this a pin at all.
     for name in CORES:
         text = _instr(name)
-        assert len(text) < 4000, f"{name} is {len(text)} chars — over the 4k core diet"
+        assert len(text) < 4400, f"{name} is {len(text)} chars — over the 4.4k core diet"
 
 
 def test_switch_notes_stay_tiny():
@@ -81,6 +91,41 @@ def test_cores_require_the_playbook_before_first_delegation():
         text = _flat(_instr(name))
         assert f"{plugin_name}:playbook" in text, name
         assert "BEFORE YOUR FIRST DELEGATION" in text, name
+
+
+def test_clarify_skill_exists_and_stays_bounded():
+    # Rule 0.5's detail lives here for the same reason the delegation
+    # contract lives in the playbook: the core summarizes, the skill
+    # carries the protocol, and neither becomes a dumping ground.
+    path = REPO.joinpath(*CLARIFY)
+    assert path.is_file(), f"missing clarify skill: {path}"
+    text = path.read_text(encoding="utf-8")
+    assert len(text) < 5000, f"SKILL.md is {len(text)} chars — over the 5k budget"
+    assert "name: clarify" in text
+
+
+def test_clarify_skill_carries_the_user_decisions():
+    # User decisions (2026-08-26): one question per message, no cap on
+    # the loop, the "does the answer change the work" filter that makes
+    # an uncapped loop safe, and the record landing in the ledger. A
+    # rewrite that drops one of these is a regression, not an edit.
+    text = _flat(_clarify())
+    assert "One question per message" in text
+    assert "No cap." in text
+    assert "would a different answer produce different code?" in text
+    assert "`## Clarified`" in text
+    assert "SendMessage" in text          # subagents escalate, never ask the user
+
+
+def test_cores_require_clarification_before_delegation():
+    # The gate is hook-enforced, but the core still has to TELL the
+    # chair what the hook wants — a deny the chair cannot act on is a
+    # loop, not a guard.
+    for name in CORES:
+        text = _flat(_instr(name))
+        assert "orchestrator:clarify" in text, name
+        assert "`## Clarified`" in text, name
+        assert "ONE question per" in text, name
 
 
 def test_profiles_name_substantive_workers():

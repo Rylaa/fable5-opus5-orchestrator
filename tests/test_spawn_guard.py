@@ -1,7 +1,7 @@
 import json
 import time
 
-from conftest import run_hook, write_ledger
+from conftest import CLARIFIED, run_hook, write_ledger
 
 SCRIPT = "ledger_guard_spawn.py"
 LONG = "x" * 2000       # above the default 1500 gate
@@ -130,7 +130,7 @@ def _write_named_ledger(root, name, body="- [ ] 1. item\n", age=None):
     d = root / ".workflow"
     d.mkdir(parents=True, exist_ok=True)
     p = d / name
-    p.write_text(body, encoding="utf-8")
+    p.write_text(CLARIFIED + body, encoding="utf-8")
     if age is not None:
         _os.utime(p, (age, age))
     return p
@@ -167,7 +167,7 @@ def test_ledger_must_be_a_whole_name_segment(repo_dir):
         d.mkdir(parents=True, exist_ok=True)
         for old in d.glob("*.md"):
             old.unlink()
-        (d / name).write_text("- [ ] 1. item\n", encoding="utf-8")
+        (d / name).write_text(CLARIFIED + "- [ ] 1. item\n", encoding="utf-8")
         assert is_deny(run_hook(SCRIPT, spawn_payload(repo_dir))), name
 
 
@@ -177,7 +177,7 @@ def test_separator_forms_all_count(repo_dir):
         d.mkdir(parents=True, exist_ok=True)
         for old in d.glob("*.md"):
             old.unlink()
-        (d / name).write_text("- [ ] 1. item\n", encoding="utf-8")
+        (d / name).write_text(CLARIFIED + "- [ ] 1. item\n", encoding="utf-8")
         assert run_hook(SCRIPT, spawn_payload(repo_dir, prompt=VERY_LONG)) is None, name
 
 
@@ -332,7 +332,7 @@ def test_parallel_task_creates_deny_exactly_once(repo_dir, tmp_path):
     denies = sum(1 for out, _ in outs if out.strip())
     assert denies == 1
     state = json.loads((tmp_path / "fable-orch-tasks-task-guard-session.json").read_text())
-    assert state == {"count": 8, "denied": True}
+    assert state == {"count": 8, "denied": True, "denied_clarify": False}
 
 
 # --- stale-ledger re-arm: last week's finished ledger must not disarm ---

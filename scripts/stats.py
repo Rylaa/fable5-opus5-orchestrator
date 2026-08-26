@@ -81,15 +81,24 @@ def main():
             print(f"{name:8} {count}")
 
     denies = events.get("spawn_deny", 0)
+    cdenies = events.get("clarify_deny", 0)
     passes = events.get("spawn_pass_over_threshold", 0)
-    if denies or passes:
-        print(f"\nover-threshold spawns: {passes} passed with a ledger, {denies} denied")
+    if denies or passes or cdenies:
+        # Both deny kinds share this line on purpose: a spawn blocked
+        # for a missing `## Clarified` record is still an over-threshold
+        # spawn, and leaving it out reported zero denies on a session
+        # that was blocked.
+        print(f"\nover-threshold spawns: {passes} passed the gates, "
+              f"{denies} denied for a missing or stale ledger, "
+              f"{cdenies} denied for a missing `## Clarified` record")
 
     tdenies = events.get("tasks_deny", 0)
+    tcdenies = events.get("tasks_clarify_deny", 0)
     tsupp = events.get("tasks_suppressed", 0)
-    if tdenies or tsupp:
-        print(f"\nsolo multi-phase nudges: {tdenies} denied, "
-              f"{tsupp} further ledgerless tasks after the reminder")
+    if tdenies or tsupp or tcdenies:
+        print(f"\nsolo multi-phase nudges: {tdenies} denied for the ledger, "
+              f"{tcdenies} denied for clarification, "
+              f"{tsupp} further tasks after a reminder")
 
     switches = events.get("inject_switch", 0)
     if switches:

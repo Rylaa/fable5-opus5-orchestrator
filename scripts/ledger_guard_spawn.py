@@ -26,6 +26,14 @@ Exempt:
     full conversation context, so the ledger is already in front
     of it; forcing a file adds nothing.
 
+Rule 0.5 rides the same gates. A ledger only satisfies them when it
+carries a NON-EMPTY `## Clarified` section: the answers the chair got
+from the user, plus the assumptions it is proceeding on. Workers
+cannot ask the user anything, so every ambiguity that reaches a spawn
+prompt becomes a guess committed to code — the section is where that
+guessing is spent instead. The heading alone does not count; a chair
+that types the header and spawns anyway has clarified nothing.
+
 The threshold defaults to 1500 chars — strict on purpose. This
 plugin is built for a Claude Fable 5 chair, where even small
 delegations should carry a ledger: Fable tokens are the scarce
@@ -46,6 +54,8 @@ Configuration (all optional):
     LEDGER_GUARD_TASKS       deny fires AT the Nth ledgerless tracker
                              task (default 3 — two tasks pass free;
                              0 or negative disables the task gate)
+    LEDGER_GUARD_CLARIFY=0   disables the Rule 0.5 clarify gate; the
+                             ledger gates keep working
     FABLE_ORCH_METRICS=0     disables the local metrics log
 """
 import json
@@ -62,7 +72,15 @@ except ImportError:  # non-POSIX: run unlocked, best effort
 
 DEFAULT_THRESHOLD = 1500
 DEFAULT_TASK_LIMIT = 3
-OPEN_ITEM_RE = r"^\s*[-*] \[ \](?:\s.*)?$"
+OPEN_ITEM_RE = r"^\s*[-*+] \[ \](?:\s.*)?$"
+CLARIFIED_HEADING_RE = r"^[ \t]{0,3}#{1,6}[ \t]*clarified\b[^\n]*$"
+ATX_HEADING_RE = r"^[ \t]{0,3}#{1,6}(?:[ \t]|$)"
+SETEXT_UNDERLINE_RE = r"^[ \t]{0,3}(?:=+|-{2,})[ \t]*$"
+# A NUMBERED checkbox — `- [ ] 3.` or `- [x] V.` — is a ledger item and ends
+# the Clarified section. An unnumbered one (`- [x] Q1: yes`) is an answer
+# written in checkbox form and still counts as content: denying that shape
+# would tell the chair its filled-in section is empty.
+LEDGER_ITEM_RE = r"^\s*[-*+] \[[ xX~]\][ \t]*(?:\d+|[Vv])\."
 
 
 def _metric(event, session_id=None, **extra):
@@ -109,7 +127,7 @@ def _task_sidecar(session_id):
     return os.path.join(tempfile.gettempdir(), f"fable-orch-tasks-{safe}.json")
 
 
-def _bump_task_count(path):
+def _bump_task_count(path, key="denied"):
     """Read-increment-write the sidecar under an exclusive lock.
 
     Parallel TaskCreate hooks race on this file; without the lock the
@@ -117,6 +135,11 @@ def _bump_task_count(path):
     concurrency). Valid-JSON-but-wrong-typed content must coerce, not
     crash — the hook contract is exit 0 always. Returns
     (count, denied_before) or None when the file can't be used.
+
+    `key` picks WHICH one-per-session budget is being spent: the
+    missing/stale-ledger nudge ("denied") and the clarify nudge
+    ("denied_clarify") are separate reminders that say different
+    things, so spending one must not silence the other.
     """
     try:
         f = open(path, "a+", encoding="utf-8")
@@ -140,12 +163,14 @@ def _bump_task_count(path):
         except (TypeError, ValueError):
             count = 0
         count += 1
-        denied_before = bool(state.get("denied"))
+        denied_before = bool(state.get(key))
         deny_now = count >= task_limit() and not denied_before
+        flags = {k: bool(state.get(k)) for k in ("denied", "denied_clarify")}
+        flags[key] = denied_before or deny_now
         try:
             f.seek(0)
             f.truncate()
-            json.dump({"count": count, "denied": denied_before or deny_now}, f)
+            json.dump(dict(count=count, **flags), f)
             f.flush()
         except (OSError, ValueError):
             pass
@@ -155,26 +180,28 @@ def _bump_task_count(path):
 
 
 def guard_task_create(data):
-    """Deny the Nth ledgerless tracker task of a session — once.
+    """Deny the Nth unguarded tracker task of a session — once.
 
-    Counting lives in a per-session sidecar so the gate never leaks
-    across sessions; without a session_id there is nothing safe to
-    scope to, so the call passes. The denied call creates no task and
-    may simply be re-issued once the ledger exists.
+    Unguarded means the ledger is missing, stale, or carries no
+    `## Clarified` record; the deny text names which. Counting lives
+    in a per-session sidecar so the gate never leaks across sessions;
+    without a session_id there is nothing safe to scope to, so the
+    call passes. The denied call creates no task and may simply be
+    re-issued once the ledger is in order.
     """
     limit = task_limit()
     if limit <= 0:
         return
     session_id = data.get("session_id")
-    ledger = find_ledger(data.get("cwd"))
-    stale = bool(ledger) and not ledger_satisfies(ledger, session_id)
-    if ledger and not stale:
+    ledger, blocker = ledger_state(data)
+    if blocker is None:
         return
 
     path = _task_sidecar(session_id)
     if path is None:
         return
-    bumped = _bump_task_count(path)
+    bumped = _bump_task_count(
+        path, "denied_clarify" if blocker == "unclarified" else "denied")
     if bumped is None:
         return
     count, denied_before = bumped
@@ -182,33 +209,32 @@ def guard_task_create(data):
     if count < limit:
         return
     if denied_before:
-        _metric("tasks_suppressed", session_id, count=count)
+        _metric("tasks_suppressed", session_id, count=count, blocker=blocker)
         return
 
-    _metric("tasks_deny", session_id, count=count, threshold=limit, stale=stale)
-    stale_note = (
-        f" (a fully-closed ledger from a previous session was found at {ledger} "
-        "and ignored — archive it as LEDGER-<topic>-archive.md or write a "
-        "fresh one)" if stale else ""
+    if blocker == "unclarified":
+        _metric("tasks_clarify_deny", session_id, count=count, threshold=limit)
+        _deny(_clarify_reason(
+            ledger,
+            f"this is tracker task #{count} this session — multi-phase work — but",
+        ))
+        return
+
+    _metric("tasks_deny", session_id, count=count, threshold=limit,
+            stale=blocker == "stale")
+    _deny(
+        f"LEDGER GUARD: this is tracker task #{count} this session — "
+        "multi-phase work — but no active ledger exists in any "
+        ".workflow/ from the working directory up to the repo root"
+        f"{_stale_note(ledger, blocker)}. "
+        "Rule 0's hard cap: work that needs a task list of 3+ items is "
+        "OVER the orchestration threshold, and an approved plan is NOT "
+        "an exemption. Write the numbered Requirements Ledger to "
+        "./.workflow/LEDGER.md now, then delegate implementation to "
+        "sonnet workers citing ledger items instead of implementing "
+        "the phases yourself. Re-issue this task afterwards — this "
+        "reminder fires once per session."
     )
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": (
-                f"LEDGER GUARD: this is tracker task #{count} this session — "
-                "multi-phase work — but no active ledger exists in any "
-                f".workflow/ from the working directory up to the repo root{stale_note}. "
-                "Rule 0's hard cap: work that needs a task list of 3+ items is "
-                "OVER the orchestration threshold, and an approved plan is NOT "
-                "an exemption. Write the numbered Requirements Ledger to "
-                "./.workflow/LEDGER.md now, then delegate implementation to "
-                "sonnet workers citing ledger items instead of implementing "
-                "the phases yourself. Re-issue this task afterwards — this "
-                "reminder fires once per session."
-            ),
-        }
-    }))
 
 
 def active_ledger_in(dirpath):
@@ -309,14 +335,28 @@ def _session_started(session_id):
         return None
 
 
-def ledger_satisfies(ledger, session_id):
+def read_ledger(path):
+    """The ledger's text, or None when it cannot be read.
+
+    One read per gated call: ledger_state hands the same text to both
+    checks. Reading twice left a window where the file could be
+    replaced or archived between them and the second read would fail
+    open on a ledger that no longer existed.
+    """
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def ledger_satisfies(ledger, session_id, text=None):
     """False only for a STALE-COMPLETE ledger: all items closed AND
     untouched since before this session started. Open items or a
     this-session touch keep it armed; no marker → existence wins."""
-    try:
-        with open(ledger, encoding="utf-8", errors="replace") as f:
-            text = f.read()
-    except OSError:
+    if text is None:
+        text = read_ledger(ledger)
+    if text is None:
         return True
     if re.findall(OPEN_ITEM_RE, text, flags=re.M):
         return True
@@ -327,6 +367,139 @@ def ledger_satisfies(ledger, session_id):
         return os.path.getmtime(ledger) >= min(started, time.time()) - 5.0
     except OSError:
         return True
+
+
+def clarify_gate_on():
+    """The Rule 0.5 gate, on unless LEDGER_GUARD_CLARIFY is exactly "0"."""
+    return (os.environ.get("LEDGER_GUARD_CLARIFY") or "").strip() != "0"
+
+
+def _outside_fences(text):
+    """Drop fenced code blocks — a ``` example section is not a record.
+
+    Same rule and same implementation as the close guard's helper: a
+    markdown example of what `## Clarified` should look like must not
+    satisfy the gate the example is teaching.
+    """
+    kept, fenced = [], False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if not fenced:
+            kept.append(line)
+    return kept
+
+
+def _section_has_content(lines, index):
+    """True when the section starting at `index` carries a real answer.
+
+    The section ends at the next heading — ATX (`## X`) or setext (a
+    line underlined with === or ---) — or at the first NUMBERED ledger
+    item, because the documented layout puts `## Clarified` directly
+    above the items with no heading between them. Without those stops
+    an empty heading would read the ledger's own requirements back as
+    answers.
+    """
+    while index < len(lines):
+        line = lines[index]
+        if re.match(ATX_HEADING_RE, line) or re.match(LEDGER_ITEM_RE, line):
+            return False
+        if line.strip():
+            nxt = lines[index + 1] if index + 1 < len(lines) else ""
+            if re.match(SETEXT_UNDERLINE_RE, nxt):
+                return False        # this line is a setext heading, not an answer
+            return True
+        index += 1
+    return False
+
+
+def ledger_clarified(ledger, text=None):
+    """True when the ledger carries a NON-EMPTY `## Clarified` section.
+
+    The heading alone is not the record: a chair that types the header
+    and spawns anyway has clarified nothing. EVERY heading is checked,
+    not just the first — the protocol appends later answers, so a
+    filled section lower in the file counts even when an empty one
+    sits above it.
+
+    Level and case are free (`# Clarified`, `### clarified`): the rule
+    is about the record existing, not about markdown depth. An
+    unreadable ledger fails OPEN, exactly like ledger_satisfies — a
+    guard never blocks on its own IO error.
+    """
+    if text is None:
+        text = read_ledger(ledger)
+    if text is None:
+        return True
+    lines = _outside_fences(text)
+    starts = [i for i, line in enumerate(lines)
+              if re.match(CLARIFIED_HEADING_RE, line, flags=re.I)]
+    if not starts:
+        return False
+    return any(_section_has_content(lines, i + 1) for i in starts)
+
+
+def ledger_state(data):
+    """(ledger path or None, blocker or None).
+
+    blocker is "missing", "stale", "unclarified", or None when the
+    ledger clears both Rule 0.5 and Rule 1. Both gates below share
+    this so a spawn and a tracker task can never disagree about what
+    the ledger says.
+    """
+    ledger = find_ledger(data.get("cwd"))
+    if not ledger:
+        return None, "missing"
+    text = read_ledger(ledger)
+    if text is None:
+        return ledger, None                    # unreadable → fail open
+    if not ledger_satisfies(ledger, data.get("session_id"), text=text):
+        return ledger, "stale"
+    if clarify_gate_on() and not ledger_clarified(ledger, text=text):
+        return ledger, "unclarified"
+    return ledger, None
+
+
+def _stale_note(ledger, blocker):
+    if blocker != "stale":
+        return ""
+    return (
+        f" (a fully-closed ledger from a previous session was found at {ledger} "
+        "and ignored — archive it as LEDGER-<topic>-archive.md or write a "
+        "fresh one)"
+    )
+
+
+def _clarify_reason(ledger, lead):
+    """The Rule 0.5 deny text, shared by both gates."""
+    return (
+        f"CLARIFY GUARD: {lead} the ledger at {ledger} has no `## Clarified` "
+        "section with content in it, so unresolved ambiguity is about to reach "
+        "workers who cannot ask the user anything. Per Dynamic Workflow Rule "
+        "0.5, ask the user ONE question at a time — scope edge, acceptance, "
+        "constraints, whose call each choice is, priority conflicts, contact "
+        "with existing code, failure behaviour — each question derived from the "
+        "last answer, until nothing that would change the work is still open. "
+        "Then record the answers and any explicit assumptions under "
+        "`## Clarified` at the TOP of the ledger and re-issue this call. Load "
+        "`orchestrator:clarify` for the protocol. Answers are plain bullets: a "
+        "NUMBERED checkbox (`- [ ] 1.`) reads as a ledger item and ends the "
+        "section, and a fenced example does not count. If the request genuinely "
+        "is unambiguous, say so in one line under the heading "
+        "('- No ambiguity: <why>') — the section is never skipped. "
+        "LEDGER_GUARD_CLARIFY=0 disables this gate."
+    )
+
+
+def _deny(reason):
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }))
 
 
 def _guard(data):
@@ -356,40 +529,38 @@ def _guard(data):
         return
 
     session_id = data.get("session_id")
-    ledger = find_ledger(data.get("cwd"))
-    stale = bool(ledger) and not ledger_satisfies(ledger, session_id)
-    if ledger and not stale:
+    ledger, blocker = ledger_state(data)
+    if blocker is None:
         _metric("spawn_pass_over_threshold", session_id,
                 chars=len(text), threshold=limit,
                 tool=data.get("tool_name") or "")
         return
 
+    if blocker == "unclarified":
+        _metric("clarify_deny", session_id,
+                chars=len(text), threshold=limit,
+                tool=data.get("tool_name") or "")
+        _deny(_clarify_reason(
+            ledger,
+            f"this looks like a detailed delegation ({what} > {limit} chars) but",
+        ))
+        return
+
     _metric("spawn_deny", session_id,
             chars=len(text), threshold=limit,
-            tool=data.get("tool_name") or "", stale=stale)
-    stale_note = (
-        f" (a fully-closed ledger from a previous session was found at {ledger} "
-        "and ignored — archive it as LEDGER-<topic>-archive.md or write a "
-        "fresh one)" if stale else ""
+            tool=data.get("tool_name") or "", stale=blocker == "stale")
+    _deny(
+        f"LEDGER GUARD: this looks like a detailed delegation "
+        f"({what} > {limit} chars) but no active ledger exists in "
+        "any .workflow/ from the working directory up to the repo root"
+        f"{_stale_note(ledger, blocker)}. Per Dynamic Workflow Rule 1, first "
+        "write the numbered Requirements Ledger to ./.workflow/LEDGER.md "
+        "(checkbox format: '- [ ] N. <item>'), then re-spawn citing "
+        "which ledger items each agent covers. If this is genuinely a "
+        "small single-phase task, do it directly; if it is "
+        "multi-phase, write the ledger and delegate — never keep "
+        "multi-phase work solo."
     )
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": (
-                f"LEDGER GUARD: this looks like a detailed delegation "
-                f"({what} > {limit} chars) but no active ledger exists in "
-                f"any .workflow/ from the working directory up to the repo root"
-                f"{stale_note}. Per Dynamic Workflow Rule 1, first write the "
-                "numbered Requirements Ledger to ./.workflow/LEDGER.md "
-                "(checkbox format: '- [ ] N. <item>'), then re-spawn citing "
-                "which ledger items each agent covers. If this is genuinely a "
-                "small single-phase task, do it directly; if it is "
-                "multi-phase, write the ledger and delegate — never keep "
-                "multi-phase work solo."
-            ),
-        }
-    }))
 
 
 def main():

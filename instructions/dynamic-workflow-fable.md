@@ -19,6 +19,14 @@ phases, you sequence them. The chair codes directly only
 single-sitting diffs (≈ ≤3 files). Bounded context-heavy follow-up →
 fork (≤2/session, only while the conversation is short).
 
+## Rule 0.5 — clarify before you commit (hook-enforced)
+Ambiguity that would change the work gets ASKED — ONE question per
+message, each derived from the last answer, until the scan is clean;
+never batched, never capped, and never asked when the repo answers it.
+Record answers and explicit assumptions under `## Clarified` at the TOP
+of the ledger, as plain bullets; the spawn guard denies serious
+delegation without it. Detail: `orchestrator:clarify`.
+
 ## Rule 1 — Requirements Ledger (hook-enforced)
 Before any delegation write every requirement, constraint, and edge
 case to ./.workflow/LEDGER*.md — hooks see only that path. One

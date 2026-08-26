@@ -1,6 +1,7 @@
 import functools
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,7 @@ SCRIPTS = REPO / "scripts"
 STRIP_ENV = [
     "LEDGER_GUARD_THRESHOLD",
     "LEDGER_GUARD_TASKS",
+    "LEDGER_GUARD_CLARIFY",
     "LEDGER_GUARD_STOP_MODE",
     "FABLE_ORCH_METRICS",
     "FABLE_ORCH_SWARM_CLEANUP",
@@ -113,8 +115,22 @@ def repo_dir(tmp_path):
     return tmp_path
 
 
-def write_ledger(root, body="- [ ] 1. item\n"):
+# What a clarified ledger looks like: the Rule 0.5 gate wants a
+# non-empty `## Clarified` section, and every test that is about the
+# LEDGER gates rather than the clarify gate needs one to get past it.
+CLARIFIED = "## Clarified\n- Q1: scope -> the whole thing\n\n"
+
+
+def write_ledger(root, body="- [ ] 1. item\n", clarified=True):
+    """Write .workflow/LEDGER.md, clarified unless the test says otherwise.
+
+    `clarified=False` (or a body that already carries the heading)
+    leaves the section off, which is what the clarify-gate tests want.
+    """
     d = root / ".workflow"
     d.mkdir(parents=True, exist_ok=True)
+    if clarified and not re.search(r"^[ \t]{0,3}#{1,6}[ \t]*clarified\b",
+                                   body, flags=re.M | re.I):
+        body = CLARIFIED + body
     (d / "LEDGER.md").write_text(body, encoding="utf-8")
     return d / "LEDGER.md"
