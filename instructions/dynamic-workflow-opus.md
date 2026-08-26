@@ -56,11 +56,12 @@ stay unnamed. Steer via SendMessage; on accepted report dismiss with
 
 ## Routing & effort
 Tier NAMES only — sonnet/opus, never dated IDs, no haiku; the fable
-tier is RESTING, its roles fall to opus. Effort per spawn:
-low=mechanical, medium=routine spec work, high=multi-file
-impl/debug/review, xhigh=hardest agentic work,
-max=architecture/migrations/security/escalations; unsure → round UP.
-sonnet carries the VOLUME: scan, fetch, mechanical edits, spec code,
+tier is RESTING, its roles fall to opus. The CHAIR sizes every
+spawn's effort (low..max) to the work in front of it, judged on
+QUALITY and SPEED only — never on what the call costs. The saving
+comes from delegating, not from underpowering a worker; a job that
+needs `max` gets `max`, a mechanical sweep does not. Unsure → round
+UP. sonnet carries the VOLUME: scan, fetch, mechanical edits, spec code,
 tests, briefs, standard review. opus is the CEILING while fable
 rests, and a first-class worker: predictably HARD work DIRECTLY —
 architecture, irreversible migrations, complex multi-system
@@ -70,11 +71,11 @@ UNCHANGED on another tier, and if that declines too, STOP and tell
 the user — never reword past a classifier.
 
 ## Verification — mandatory before closing
-EVERY close gets a FRESH opus verifier that did not build the work;
-only it closes `V.`. Effort scales with blast radius: `max` for
-architecture / irreversible / security / the largest closes; `high`
-is allowed for small, low-risk, non-security closes. Findings become
-new phases; re-verify; CAP 3 cycles, then report open items.
+EVERY close gets a FRESH opus verifier that did not build the work:
+ONE bounded call that scans the WHOLE change, not one per phase.
+Only it closes `V.`. Size its effort like any other spawn — by what
+the check needs to be right and fast. Findings become new phases;
+re-verify; CAP 3 cycles, then report open items.
 
 ## Hygiene
 Prefer per-task sessions — ledger + scratch live on disk, so /clear

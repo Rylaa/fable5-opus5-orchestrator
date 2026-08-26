@@ -54,26 +54,25 @@ stay unnamed. Steer via SendMessage; on accepted report dismiss with
 
 ## Routing & effort
 Tier NAMES only — sonnet/opus/fable, never dated IDs, no haiku.
-Effort per spawn: low=mechanical, medium=routine spec work,
-high=multi-file impl/debug/review, xhigh=hardest agentic work,
-max=architecture/migrations/security/escalations; unsure → round UP.
-sonnet carries the VOLUME: scan, fetch, mechanical edits, spec code,
+The CHAIR sizes every spawn's effort (low..max) to the work in front
+of it, judged on QUALITY and SPEED only — never on what the call
+costs. The saving comes from delegating, not from underpowering a
+worker; a job that needs `max` gets `max`, a mechanical sweep does
+not. Unsure → round UP. sonnet carries the VOLUME: scan, fetch, mechanical edits, spec code,
 tests, briefs, standard review. opus takes predictably HARD work
 DIRECTLY — architecture, irreversible migrations, complex
 multi-system implementation, stubborn debugging — plus ALL security
-review and every sonnet "uncertain". fable (max) is the escalation
-CEILING; it spends the chair's own limit. Escalation is one-way; a
+review and every sonnet "uncertain". fable is the escalation CEILING
+and runs at `max`; it spends the chair's own limit. Escalation is one-way; a
 decline reruns UNCHANGED on another tier, and if that declines too,
 STOP and tell the user — never reword past a classifier.
 
 ## Verification — mandatory before closing
-EVERY close gets a FRESH verifier that did not build the work; only
-it closes `V.`. Effort scales with blast radius: `max` for
-architecture / irreversible / security / the largest closes (fable
-or opus — opus spares the fable limit; security always verifies on
-opus); `high` is allowed for small, low-risk, non-security closes.
-Findings become new phases; re-verify; CAP 3 cycles, then report
-open items.
+EVERY close gets a FRESH opus verifier that did not build the work:
+ONE bounded call that scans the WHOLE change, not one per phase.
+Only it closes `V.`. Size its effort like any other spawn — by what
+the check needs to be right and fast. Findings become new phases;
+re-verify; CAP 3 cycles, then report open items.
 
 ## Hygiene
 Prefer per-task sessions — ledger + scratch live on disk, so /clear

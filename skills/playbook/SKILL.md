@@ -72,8 +72,9 @@ The verifier is FRESH — it has not worked on the task. Give it the
 original request, the ledger path, and the work-product paths
 (diffs, reports — not the raw scratch dump). It reads from disk; its
 only job is to find what is missing, wrong, or unaddressed, item by
-item — and only it closes the `V.` ledger item. Its effort follows
-the core profile's blast-radius scale. Findings become new phases;
+item — and only it closes the `V.` ledger item. It is ONE call over
+the whole change, not one per phase, and the chair sizes its effort
+the way it sizes any other spawn. Findings become new phases;
 re-verify after fixes. CAP: 3 verify→fix cycles, then STOP and
 report the open items to the user.
 

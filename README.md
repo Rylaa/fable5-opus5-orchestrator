@@ -21,7 +21,7 @@ Already on an older version? See [Upgrading to v0.16.0](#upgrading-to-v0160).
 2. **Claude asks questions** — one at a time, until nothing is left that would change the work.
 3. **Claude writes a ledger** — every requirement, one checkbox line, in `./.workflow/LEDGER.md`.
 4. **Claude hands the work out** — Sonnet 5 for volume, Opus 5 for the hard parts.
-5. **A fresh agent checks the result** before anything is called done.
+5. **One fresh agent checks the whole result** before anything is called done.
 
 Skip step 2, 3, or 5 and a hook blocks the tool call and says what is missing.
 
@@ -31,7 +31,7 @@ Fable 5 is the best model to run a session, and the fastest way to hit your usag
 
 ## Who runs what
 
-Your Fable limit pays for the chair and nothing else, plus one check per close.
+Your Fable limit pays for the chair and nothing else.
 
 ```
 ┌─────────────────────────────────────────┬─────────────────┬─────────────────────┐
@@ -40,12 +40,14 @@ Your Fable limit pays for the chair and nothing else, plus one check per close.
 │ Planning, decisions, arbitration        │ Fable 5 (chair) │ yes                 │
 │ Code, tests, refactors                  │ Sonnet 5        │ nothing             │
 │ Research briefs, filtering, review      │ Sonnet 5        │ nothing             │
-│ Bulk reading (fetch, grep, scan)        │ Sonnet 5 (low)  │ nothing             │
+│ Bulk reading (fetch, grep, scan)        │ Sonnet 5        │ nothing             │
 │ Architecture, migrations                │ Opus 5 (direct) │ nothing             │
-│ Security review                         │ Opus 5 (max)    │ nothing             │
-│ Final check — every close               │ Opus/Fable 5    │ at most 1 per close │
+│ Security review                         │ Opus 5          │ nothing             │
+│ Final check — every close               │ Opus 5          │ nothing             │
 └─────────────────────────────────────────┴─────────────────┴─────────────────────┘
 ```
+
+**Effort is chosen per task, by the chair.** Every worker runs somewhere on `low` to `max`, and the chair picks the level from what the job needs to come out right and fast — never from what the call costs. Delegating is where the saving comes from; underpowering a worker just buys a second attempt.
 
 Four rules keep the answers coming back small:
 
@@ -116,7 +118,7 @@ Files survive context compaction. Chat does not.
 - [ ] V. fresh-eyes verification passed
 ```
 
-Each task Claude hands out names the item numbers it covers. New findings get appended. The `V.` line can only be ticked by the agent that did the checking — not by the one that did the work.
+Each task Claude hands out names the item numbers it covers. New findings get appended. The `V.` line can only be ticked by the agent that did the checking — not by the one that did the work. That is one agent reading the whole change, not one per phase.
 
 ## What Claude gets told at session start
 
