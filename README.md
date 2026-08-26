@@ -15,6 +15,16 @@ Restart Claude Code. Takes about a minute. Needs `python3`. macOS and Linux only
 
 Already on an older version? See [Upgrading to v0.16.0](#upgrading-to-v0160).
 
+## Start a task
+
+```
+/fire add CSV export to the reports screen
+```
+
+`/fire` runs the whole discipline in order: it grills the request until nothing is unclear, writes the ledger, hands the work to sized workers, and puts a fresh agent on the close. Type it with the task, or on its own and it asks what the task is.
+
+You do not have to use it — the hooks enforce the same discipline whatever you type. `/fire` just starts at step 1 instead of step 3.
+
 ## What changes in your next session
 
 1. **You give Claude a task.**
