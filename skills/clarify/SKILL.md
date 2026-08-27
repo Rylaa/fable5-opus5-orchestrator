@@ -18,7 +18,27 @@ Nothing is delegated, planned, or edited until every ambiguity that
 would change the work is resolved by an answer or written down as an
 assumption the user can veto — and then until the user
 approves what you made of it. `## Clarified` and `## Approved` in the
-ledger are the record; the spawn guard denies without either.
+ledger are the record. The guards deny on some paths and miss others —
+see "Scale the ceremony" below — so the records are the discipline, not
+a thing the hook will remind you about.
+
+## Scale the ceremony to the work
+
+Below Rule 0's SMALL-WORK line — one sitting, ≈ ≤3 files — the seven-axis
+sweep is not the default. Read the request, ask what genuinely blocks
+you, and write what is TRUE under `## Clarified`: the answers you got,
+or the one-line `- No ambiguity:` form when the request does answer
+itself. Never assert an unambiguity you did not test — that
+line is a claim, not a stamp for small work.
+
+Two things do NOT scale. The loop: a one-line fix can rest on an
+ambiguity that decides the change, and when one is there you ask it,
+uncapped, exactly as on big work. And the GO: `## Approved` is required
+at every size — and not because a hook will force it. The gates miss
+whole paths (forks, short spawns, a session that never reaches three
+tracker tasks), so treat being caught as an accident and the rule as
+the thing. It rests on the v0.21.0 lesson: answers are not agreement,
+at any diff size.
 
 ## Scan — seven axes
 
@@ -51,17 +71,23 @@ One question. Wait. The answer re-shapes the map — it closes some
 axes, opens others, and the next question is DERIVED from it, not read
 off a pre-written list.
 
-No cap. Stop when the scan turns up nothing that would change the
-work, never at a number.
+No cap. Stop on the POSITIVE test — could you write the spec for a
+worker who cannot ask you anything, without guessing at any part of it?
+"The scan turned up nothing" is what a clean request and a lazy look
+produce alike, so it is no test.
 
 Form:
 
 - Choices are nameable (2-4 options) → `AskUserQuestion`, options
-  concrete, your recommendation first and marked.
-- Genuinely open → one plain-prose sentence.
+  concrete, recommendation FIRST and marked, plus ONE line of WHY. A
+  mark with no reason gets rubber-stamped, and a rubber stamp is not an
+  answer; the reason is what they can disagree with.
+- Genuinely open → one plain sentence carrying your reading AND its
+  reason: "I would go with X because Y — right?" Faster than "what do
+  you mean?"
 
-State your reading when the answer depends on it: "I read this as X,
-which means Y — right?" is a faster question than "what do you mean?"
+A recommendation is a PROPOSAL, never a recorded answer. `## Clarified`
+holds what the USER picked.
 
 ## Record, then delegate
 
@@ -87,14 +113,22 @@ an example, not a record, and a divider or an HTML comment is not an
 answer. Sub-headings are fine: `### Round 2` stays inside the
 section.
 
-A genuinely unambiguous request still gets the section — one line:
-`- No ambiguity: <why the request answers itself>`.
+A genuinely unambiguous request still gets the section, at ANY size —
+one line: `- No ambiguity: <why the request answers itself>`.
 
 ## Then get the go, then delegate
 
 Answers are not agreement — right answers still leave the wrong build
 free to be approved silently. Before the FIRST spawn, say what you are
 about to do, and wait.
+
+Shape that message the way the reply-shape rules in your injected core
+shape every reply — numbered build steps (five max, longer splits into now/later),
+what you are NOT building, how done is observed, the ask on its own
+line — plus one thing that shape does not carry: a concrete COST line,
+files and agents and rough wall-clock, which lets them answer "not
+worth it". No preamble, no recap of the clarify round: readable
+and answerable in under a minute.
 
 ```markdown
 ## Approved

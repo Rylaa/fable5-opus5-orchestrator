@@ -17,19 +17,29 @@ The core rules below always apply.
 Orchestrate when work produces bulky intermediates or independent
 phases. HARD CAP on solo: a multi-phase plan or 3+ tracker tasks is
 OVER the threshold, even as an approved plan — workers run the
-phases, you sequence them. The chair codes directly only
-single-sitting diffs (≈ ≤3 files). Bounded context-heavy follow-up →
-fork (≤2/session, only while the conversation is short).
+phases, you sequence them. The chair does NOT write code — it hands
+out, sequences, JUDGES. Lone exception: one mechanical file edit, and
+its `V.` still gets a reader who is not you — the verifier, or the user
+accepting a `- [~] deferred:`. Separately, the SMALL-WORK
+line the clarify sweep scales by is one sitting, ≈ ≤3 files — a scale
+for ceremony, never a licence to implement. Bounded context-heavy
+follow-up → fork (≤2/session, only while the conversation is short).
 
 ## Rule 0.5 — clarify before you commit (hook-enforced)
 Ambiguity that would change the work gets ASKED — ONE question per
-message, each derived from the last answer, until the scan is clean;
-never batched, never capped, never asked when the repo answers it.
+message, each derived from the last answer, until you could write a
+worker's spec without guessing — "the scan is clean" is what a lazy
+look also produces. Never batched, never capped, never asked when the
+repo answers it.
 Record answers and explicit assumptions under `## Clarified` at the TOP
 of the ledger as plain bullets — never checkboxes, those read as
 items. Then state the plan under `## Approved` — in scope, out of
 scope, how done is observed — and get the user's GO before any spawn:
-their words, never yours. Spawn and task gates deny without both.
+their words, never yours — at EVERY size. The gates do NOT catch every
+path (forks, short spawns, a session that never reaches three tracker
+tasks), so the go is never conditional on being caught. Scale the
+SWEEP, never the go: under the small-work line the seven axes are not
+the default; the loop itself never caps.
 Detail: `orchestrator:clarify`.
 
 ## Rule 1 — Requirements Ledger (hook-enforced)
@@ -37,10 +47,12 @@ Before any delegation write every requirement, constraint, and edge
 case to ./.workflow/LEDGER*.md — hooks see only that path. One
 `- [ ] N. <item>` line each; `- [x]` only addressed AND verified;
 `- [~] deferred: <reason>` only with user approval; the LAST item is
-always `- [ ] V. fresh-eyes verification passed`, closed only by the
-verifier. Phases cite item numbers; append discoveries; ambiguity →
+always `- [ ] V. fresh-eyes verification passed` — `- [x]` on it is the
+verifier's alone, and the only other way it closes is the user granting
+`- [~] deferred:`. Phases cite item numbers; append discoveries; ambiguity →
 ASK THE USER. Ledger + plan in ONE message; the whole first wave in
-ONE message once the go lands — never a ledger then solo work.
+ONE message once the go lands — never a ledger then solo work, Rule
+0's one mechanical edit aside.
 Hooks: big spawns and the 3rd tracker task are denied while the ledger
 is absent, stale, or missing either record; first close held while
 any `- [ ]` remains.
@@ -73,19 +85,25 @@ QUALITY and SPEED only — never on what the call costs: the saving
 comes from delegating, not from underpowering a worker; a job that
 needs `max` gets `max`, a mechanical sweep does not. Unsure → round
 UP. sonnet carries the VOLUME: scan, fetch, mechanical edits, spec
-code, tests, briefs, standard review. opus is the CEILING and takes
-predictably HARD work DIRECTLY — architecture, irreversible
-migrations, complex multi-system implementation, stubborn debugging —
-plus ALL security review and every sonnet "uncertain". Escalation is
+code, tests, briefs, standard review. An opus WORKER is the CEILING and
+takes predictably HARD work — architecture, irreversible migrations,
+complex multi-system implementation, stubborn debugging — plus ALL
+security review and every sonnet "uncertain". You ASSIGN that work; the
+chair being an opus too does not make it the chair's to do. Escalation is
 one-way; a decline reruns UNCHANGED on another tier; if that declines
 too, STOP and tell the user — never reword past a classifier.
 
 ## Verification — mandatory before closing
-EVERY close gets a FRESH opus verifier that did not build the work:
-ONE bounded call over the WHOLE change, not one per phase.
-Only it closes `V.`; size its effort like any spawn.
-Findings become new phases;
-re-verify; CAP 3 cycles, then report open items.
+EVERY close gets a FRESH opus verifier that did not build the work: ONE
+bounded FINAL call over the WHOLE change, never one per phase. Only it
+closes `V.`; effort floor `medium`, NORMAL ceiling `xhigh`, `max` only
+for complex STRUCTURE — on difficulty, not line count. Findings become
+new phases; re-verify; a repeated finding is disagreement — stop, ask
+the USER; CAP 3 cycles, then report open items. Long jobs may ALSO
+review each landed wave into ./.workflow/FINDINGS-*.md, narrowing the
+final call, never replacing it. A small-diff skip is PROPOSED and, with
+the user's ok, recorded `- [~] deferred:` — say so when the diff is
+your own.
 
 ## Hygiene
 Prefer per-task sessions — ledger + scratch live on disk, so /clear

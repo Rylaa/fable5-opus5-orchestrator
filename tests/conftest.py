@@ -265,3 +265,34 @@ def write_marker(tmp, started, session="test-session"):
     marker = tmp / f"fable-orch-model-{session}.json"
     marker.write_text(json.dumps({"started": started}), encoding="utf-8")
     return marker
+
+
+def flat(text):
+    """Collapse every whitespace run to one space.
+
+    The profiles and skills are hard-wrapped prose, so a pinned phrase
+    can sit across a line break — `NAME every substantive\nworker` is
+    the same rule as `NAME every substantive worker`, and a pin that
+    only sees the second one fails on the next rewrap instead of on a
+    real regression. Content pins compare meaning, not line breaks.
+
+    Lives here rather than in each module because v0.20.1 gave the test
+    helpers one home and three private copies had grown back.
+    """
+    return " ".join(text.split())
+
+
+def context_of(result, event="SessionStart"):
+    """The additionalContext a context-injecting hook returned.
+
+    Asserts the event name on the way through: a payload from the wrong
+    hook has no business being read for injected context, and a silent
+    `.get` chain there turns a wrong-hook bug into an empty string that
+    passes. `event` because two hooks inject — SessionStart carries the
+    profile, UserPromptSubmit carries the reply-shape reminder.
+
+    Shared for the same reason `flat` is: this had two copies with two
+    different contracts, one asserting and one not.
+    """
+    assert result["hookSpecificOutput"]["hookEventName"] == event
+    return result["hookSpecificOutput"]["additionalContext"]

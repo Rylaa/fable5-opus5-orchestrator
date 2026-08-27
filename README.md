@@ -102,7 +102,7 @@ A worker cannot ask you anything. So every unanswered question the chair carries
 The rules, from [`skills/clarify/SKILL.md`](skills/clarify/SKILL.md):
 
 1. **One question per message.** Your answer changes the next question. Asking four at once guesses which order they depend on.
-2. **No limit on how many.** It stops when there is nothing left that would change the work.
+2. **No limit on how many.** It stops on a positive test: can it write the spec for a worker who cannot ask you anything, without guessing at any part of it? "Nothing turned up" is what a clean request and a lazy look produce alike, so that is not the test.
 3. **Only questions that change the work.** "Would a different answer produce different code?" If no, Claude writes down an assumption instead.
 4. **Never asks what the repo answers.** It reads first.
 5. **Everything gets written down** — answers and assumptions both.
@@ -119,6 +119,8 @@ What lands in your ledger:
 Plain bullets. Any checkbox line — `- [ ] 1.`, `- [x] Q1: yes` — is read as a ledger item and ends the section instead of filling it. A `## Clarified` inside a code fence is an example, not a record, and a divider on its own is not an answer. Sub-headings stay inside the section, so `### Round 2` is fine.
 
 Nothing to ask? The section is still written, as one line: `- No ambiguity: <why>`.
+
+Small work scales the sweep, not the go. Below one sitting and about three files, the seven-axis pass is not the default: Claude writes what is true and moves on, but a real ambiguity is still asked, uncapped, and the approval below is still stated. The gates will not always catch that one — short spawns and forks pass free, as the paragraph under the table says. On small work the go is a discipline, not a guard.
 
 Then, before anything is handed out, Claude says what it is about to build and stops:
 
@@ -195,7 +197,7 @@ An agent is identified by the `--agent-name` on its command line, not by the nam
 
 It covers named `Agent` and `Task` spawns only — not `Workflow`, even though the spawn gates above read a Workflow `script` too: a Workflow names a script rather than an agent, its agents run inside the workflow's own runtime, and no session log ever carries a name the watchdog could match, so recording one would leave a permanent `unborn` alarm against an agent that was never going to appear.
 
-It is not a gate. Nothing is blocked, nothing is killed, and a healthy wave costs the chair no extra step — it goes idle as before and is woken only when there is something to do. What to do about it stays the chair's call: ping the agent, dismiss and re-spawn, or take the work back.
+It is not a gate. Nothing is blocked, nothing is killed, and a healthy wave costs the chair no extra step — it goes idle as before and is woken only when there is something to do. What to do about it stays the chair's call: ping the agent, dismiss and re-spawn, or take it back within Rule 0's one-file limit.
 
 Look for yourself at any time (the path is in the profile the chair was given at session start):
 
@@ -260,7 +262,7 @@ Finished ledgers need nothing.
 python3 -m pytest tests/ -q
 ```
 
-Runs in about 105 seconds, most of it spent asleep: the watchdog tests drive real subprocesses through the birth and stall thresholds, and waiting is the behaviour under test. The hooks are plain stdin/stdout JSON filters, so every test runs one as a real subprocess: thresholds, the fork exemption, the clarify and approval gates (heading level and case, code fences, setext headings, multiple sections, the numbered-item stop, and the order the three deny texts come in), the task-list gate, the upward ledger search and where it stops, close-guard scoping, metrics, profile injection and switching, cleanup, and worker reaping against a fake tmux.
+Runs in about 120 seconds, most of it spent asleep: the watchdog tests drive real subprocesses through the birth and stall thresholds, and waiting is the behaviour under test. The hooks are plain stdin/stdout JSON filters, so every test runs one as a real subprocess: thresholds, the fork exemption, the clarify and approval gates (heading level and case, code fences, setext headings, multiple sections, the numbered-item stop, and the order the three deny texts come in), the task-list gate, the upward ledger search and where it stops, close-guard scoping, metrics, profile injection and switching, cleanup, and worker reaping against a fake tmux.
 
 A second layer checks the *text*: the profiles stay under their size budget and keep the decisions that earlier rewrites were not allowed to drop.
 

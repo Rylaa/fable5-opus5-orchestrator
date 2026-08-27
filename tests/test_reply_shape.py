@@ -8,7 +8,7 @@ every prompt, at the moment the model composes its answer.
 import json
 import os
 
-from conftest import REPO, run_hook
+from conftest import context_of, flat, REPO, run_hook
 
 SCRIPT = "remind_reply_shape.py"
 INJECT = "inject_instructions.py"
@@ -17,14 +17,6 @@ RULES = REPO / "instructions" / "reply-shape.md"
 
 def _rules():
     return RULES.read_text(encoding="utf-8")
-
-
-def _flat(text):
-    return " ".join(text.split())
-
-
-def context_of(result):
-    return result["hookSpecificOutput"]["additionalContext"]
 
 
 # --- the rules file ---
@@ -41,7 +33,7 @@ def test_rules_carry_the_user_decisions():
     # User decision (2026-08-26): the plugin ships these itself so that
     # everyone who installs it gets them — no dependency on any
     # formatting skill being present.
-    text = _flat(_rules())
+    text = flat(_rules())
     assert "LEAD WITH THE NEXT ACTION" in text
     assert "NUMBER multi-step work" in text
     assert "NO preamble" in text
@@ -55,14 +47,14 @@ def test_rules_carry_the_user_decisions():
 def test_chair_gets_the_reminder():
     result = run_hook(SCRIPT, {"session_id": "s", "prompt": "hi"})
     assert result["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
-    assert "next action" in context_of(result)
+    assert "next action" in context_of(result, event="UserPromptSubmit")
 
 
 def test_reminder_stays_one_line_sized():
     # It is paid on EVERY prompt. A reminder that grows into the rules
     # themselves defeats the split.
     result = run_hook(SCRIPT, {"session_id": "s"})
-    assert len(context_of(result)) < 400
+    assert len(context_of(result, event="UserPromptSubmit")) < 400
 
 
 def test_teammate_gets_no_reminder(tmp_path):

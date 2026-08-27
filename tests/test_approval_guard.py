@@ -192,6 +192,13 @@ def test_a_fenced_clarified_example_still_earns_a_real_record(repo_dir):
 # --- scope: the gate rides the EXISTING thresholds, it does not widen them ---
 
 def test_short_prompt_still_passes_unapproved(repo_dir):
+    # This is also what the v0.22.0 docs rest on. Three review rounds
+    # caught three wrong prose descriptions of this gate ("no size
+    # condition", "only spawn prompts over 1500 chars", both silent
+    # about guard_task_create's tracker-task path), so the documents
+    # stopped describing the mechanics and now say the gates miss whole
+    # paths and the go is never conditional on being caught. THIS test
+    # is the record of the behaviour behind that sentence.
     write_unapproved_ledger(repo_dir)
     assert run_hook(
         SCRIPT, spawn_payload(repo_dir, prompt="where is the config")) is None

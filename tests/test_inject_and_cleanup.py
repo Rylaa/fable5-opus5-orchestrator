@@ -1,15 +1,10 @@
 import json
 import os
 
-from conftest import REPO, run_hook
+from conftest import context_of, flat, REPO, run_hook
 
 INJECT = "inject_instructions.py"
 CLEANUP = "cleanup_session_cache.py"
-
-
-def context_of(result):
-    assert result["hookSpecificOutput"]["hookEventName"] == "SessionStart"
-    return result["hookSpecificOutput"]["additionalContext"]
 
 
 CORES = ("dynamic-workflow-fable.md", "dynamic-workflow-opus.md")
@@ -30,18 +25,13 @@ def _clarify():
     return REPO.joinpath(*CLARIFY).read_text(encoding="utf-8")
 
 
-def _flat(text):
-    """Collapse every whitespace run to one space.
-
-    The profiles are hard-wrapped prose, so a pinned phrase can sit
-    across a line break — `NAME every substantive\\nworker` is the same
-    rule as `NAME every substantive worker`, and a pin that only sees
-    the second one fails on the next rewrap instead of on a real
-    regression. Content pins compare meaning, not line breaks."""
-    return " ".join(text.split())
-
-
 def test_cores_stay_on_the_token_diet():
+    # NOTE: the 10k cap itself is asserted end-to-end by
+    # test_the_whole_injection_stays_under_the_hook_cap at the bottom of
+    # this file. What survives here is the per-core STYLE budget: the
+    # core is a summary, and a summary that doubles has stopped being
+    # one even when the total still fits.
+    #
     # Claude Code caps hook output at 10,000 chars, but the real budget
     # is tighter than the cap: this text is prepended to EVERY chair
     # session, so every char is paid on every start (v0.8.0 shipped at
@@ -59,9 +49,16 @@ def test_cores_stay_on_the_token_diet():
     # in Rule 3: the opus core was at 4369 and had 31 chars of room, so
     # the rule could not be seated at all. Same shape as the 0.5 raise —
     # required, not comfort.
+    #
+    # v0.22.0 raised it 4800 to 6300 for three behaviour changes the
+    # cores have to state or the chair cannot obey them: the chair no
+    # longer writes the code (Rule 0), the clarify sweep scales to the
+    # work (Rule 0.5), and the verifier carries an effort floor and a
+    # convergence stop (Verification). The opus core was at 4778 with 22
+    # chars of room — none of the three could be seated.
     for name in CORES:
         text = _instr(name)
-        assert len(text) < 4800, f"{name} is {len(text)} chars — over the 4.8k core diet"
+        assert len(text) < 6300, f"{name} is {len(text)} chars — over the 6.3k core diet"
 
 
 def test_switch_notes_stay_tiny():
@@ -77,10 +74,25 @@ def test_playbook_skill_exists_and_stays_bounded():
     # The detail the cores shed has to land SOMEWHERE readable, and the
     # skill is loaded in full once per session — bounded, not a dumping
     # ground for everything trimmed from the cores.
+    #
+    # v0.22.0 raised the pin 5000 to 9000 — the largest raise this file
+    # has taken, and deliberately so. The skill loads on DEMAND and is
+    # not part of the injected payload, so detail moved here costs
+    # nothing per session; detail left in a core or in fire.md costs
+    # every session or every /fire. This release pushed the verifier's
+    # effort rule, the per-wave review and the skip rule OUT of fire.md
+    # and into this file for exactly that reason. The binding constraint
+    # is test_the_whole_injection_stays_under_the_hook_cap, not this pin,
+    # which is now a dumping-ground alarm rather than a token budget. The file was at 4995 with 5
+    # chars of room and gained the two sections the cores only summarize:
+    # what the chair actually does (it judges, it does not write code —
+    # the verifier is its eyes) and the verification detail behind the
+    # new core line, effort floor, convergence stop, per-wave background
+    # review into FINDINGS-*.md, and when a skip is the chair's call.
     path = REPO.joinpath(*PLAYBOOK)
     assert path.is_file(), f"missing playbook skill: {path}"
     text = path.read_text(encoding="utf-8")
-    assert len(text) < 5000, f"SKILL.md is {len(text)} chars — over the 5k budget"
+    assert len(text) < 9000, f"SKILL.md is {len(text)} chars — over the 9k budget"
     assert "name: playbook" in text  # the namespaced literal below depends on it
 
 
@@ -94,7 +106,7 @@ def test_cores_require_the_playbook_before_first_delegation():
         (REPO / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["name"]
     assert plugin_name == "orchestrator"
     for name in CORES:
-        text = _flat(_instr(name))
+        text = flat(_instr(name))
         assert f"{plugin_name}:playbook" in text, name
         assert "BEFORE YOUR FIRST DELEGATION" in text, name
 
@@ -106,7 +118,7 @@ def test_cores_carry_the_watchdog_rule():
     # watchdog out WITH the wave is what turns that wait into a
     # message; a core that drops it ships the old failure back.
     for name in CORES:
-        text = _flat(_instr(name))
+        text = flat(_instr(name))
         assert '"{{WATCHDOG}}" --watch' in text, name
         assert "`watchdog` teammate" in text, name
         assert "never poll" in text, name
@@ -131,10 +143,14 @@ def test_clarify_skill_exists_and_stays_bounded():
     # Rule 0.5's detail lives here for the same reason the delegation
     # contract lives in the playbook: the core summarizes, the skill
     # carries the protocol, and neither becomes a dumping ground.
+    # v0.22.0 raised the pin 5000 to 7100. The file was at 4966 and
+    # gained the ceremony-scaling section, the positive stop test, the
+    # reason a recommendation has to carry, and the shape of the
+    # approval ask.
     path = REPO.joinpath(*CLARIFY)
     assert path.is_file(), f"missing clarify skill: {path}"
     text = path.read_text(encoding="utf-8")
-    assert len(text) < 5000, f"SKILL.md is {len(text)} chars — over the 5k budget"
+    assert len(text) < 7100, f"SKILL.md is {len(text)} chars — over the 7.1k budget"
     assert "name: clarify" in text
 
 
@@ -143,7 +159,7 @@ def test_clarify_skill_carries_the_user_decisions():
     # the loop, the "does the answer change the work" filter that makes
     # an uncapped loop safe, and the record landing in the ledger. A
     # rewrite that drops one of these is a regression, not an edit.
-    text = _flat(_clarify())
+    text = flat(_clarify())
     assert "One question per message" in text
     assert "No cap." in text
     assert "would a different answer produce different code?" in text
@@ -157,7 +173,7 @@ def test_clarify_skill_carries_the_approval_gate():
     # say — what it will build, what it will not, how done is observed —
     # and that it WAITS. A rewrite that drops the section leaves the
     # hook denying with nothing in the docs to act on.
-    text = _flat(_clarify())
+    text = flat(_clarify())
     assert "## Approved" in text
     assert "Not building:" in text
     assert "Done when:" in text
@@ -170,7 +186,7 @@ def test_cores_require_approval_before_delegation():
     # then the go, then the spawn. A deny the chair cannot act on is a
     # loop, not a guard.
     for name in CORES:
-        text = _flat(_instr(name))
+        text = flat(_instr(name))
         assert "`## Approved`" in text, name
         assert "GO before any spawn" in text, name
         assert text.index("`## Clarified`") < text.index("`## Approved`"), name
@@ -186,7 +202,7 @@ def test_cores_do_not_order_the_wave_out_before_the_go():
     # once in real use before the review caught it). Rule 1 still
     # batches; what it batches is the WAVE, after the answer.
     for name in CORES:
-        text = _flat(_instr(name))
+        text = flat(_instr(name))
         assert "ledger + first worker wave in ONE message" not in text, name
         assert "the whole first wave in ONE message once the go lands" in text, name
         assert "never a ledger then solo work" in text, name
@@ -200,7 +216,7 @@ def test_the_opus_core_keeps_sizing_effort_to_the_work():
     # operative half of the effort rule and left only the negative one
     # ("never on what the call costs"). A chair told what NOT to price
     # on, and nothing about when to spend, rounds down.
-    text = _flat(_instr("dynamic-workflow-opus.md"))
+    text = flat(_instr("dynamic-workflow-opus.md"))
     assert "a job that needs `max` gets `max`, a mechanical sweep does not" in text
 
 
@@ -209,7 +225,7 @@ def test_cores_require_clarification_before_delegation():
     # chair what the hook wants — a deny the chair cannot act on is a
     # loop, not a guard.
     for name in CORES:
-        text = _flat(_instr(name))
+        text = flat(_instr(name))
         assert "orchestrator:clarify" in text, name
         assert "`## Clarified`" in text, name
         assert "ONE question per" in text, name
@@ -223,15 +239,15 @@ def test_profiles_name_substantive_workers():
     # subagents for substantive work. Survived the v0.15.0 diet in both
     # cores; the lifecycle detail moved to the playbook.
     for name in CORES:
-        assert "NAME every substantive worker" in _flat(_instr(name)), name
-    assert "NAME every substantive worker" in _flat(_playbook())
+        assert "NAME every substantive worker" in flat(_instr(name)), name
+    assert "NAME every substantive worker" in flat(_playbook())
 
 
 def test_preserved_decisions_survive_the_diet():
     # v0.15.0 cut ~60% of both cores. These are user decisions, not
     # prose — a trim that drops one is a regression, not a diet.
     for name in CORES:
-        text = _flat(_instr(name))
+        text = flat(_instr(name))
         assert "no haiku" in text, f"{name}: haiku ban dropped"
         assert "fork (≤2/session" in text, f"{name}: fork cap dropped"
         assert "EVERY close gets a FRESH" in text, f"{name}: fresh-eyes-every-close dropped"
@@ -239,7 +255,7 @@ def test_preserved_decisions_survive_the_diet():
         # v0.15.0 additions: the report diet and the batching rule.
         assert "≤40 lines" in text, f"{name}: report line cap dropped"
         assert "five greps is one agent" in text, f"{name}: batching rule dropped"
-    book = _flat(_playbook())
+    book = flat(_playbook())
     assert "at most 2 per session" in book          # fork cap, in full
     assert "at most 40 lines TOTAL" in book         # report diet, in full
     assert "at most 10 lines inline" in book        # verbatim spill rule
@@ -327,9 +343,9 @@ def test_profiles_name_no_dated_opus_id():
     dated = _re.compile(r"\b(opus|sonnet|fable|haiku)[ -]?\d+[.-]\d+",
                         _re.IGNORECASE)
     for name in CORES + SWITCHES:
-        hit = dated.search(_flat(_instr(name)))
+        hit = dated.search(flat(_instr(name)))
         assert not hit, f"{name}: {hit.group(0) if hit else ''}"
-    hit = dated.search(_flat(_playbook()))
+    hit = dated.search(flat(_playbook()))
     assert not hit, f"SKILL.md: {hit.group(0) if hit else ''}"
 
 
@@ -339,7 +355,7 @@ def test_readme_carries_no_price_or_cost_figures():
     # invites arguing with the arithmetic instead of the design.
     import re as _re
 
-    readme = _flat((REPO / "README.md").read_text(encoding="utf-8"))
+    readme = flat((REPO / "README.md").read_text(encoding="utf-8"))
     money = _re.compile(
         r"[$€£]\s?\d|\b\d+(?:[.,]\d+)?\s?(?:USD|EUR|dollars?|cents?)\b"
         r"|\bper (?:million|1M) tokens\b",
@@ -372,7 +388,8 @@ def test_readme_links_point_at_headings_that_exist():
 
 def test_readme_does_not_undersell_how_long_the_suite_takes():
     # The figure was written when the suite was seconds long and stayed
-    # there: measured 2026-08-27, 340 tests in 103.3s, of which
+    # there: measured 2026-08-27, 349 tests in 94-128s depending on the
+    # machine (340 in 103.3s before this release), of which
     # tests/test_watchdog.py is 57s of real sleeping through the birth
     # and stall thresholds. A reader who is told 25 seconds concludes
     # the run has hung. The pin is a floor, not the number itself, so
@@ -1127,3 +1144,100 @@ def test_protocol_mismatch_socket_survives(tmp_path):
     assert run_hook(CLEANUP, {"session_id": "s-mismatch"}, env_extra=env, tmpdir=tmp_path) is None
     assert sock.exists()
     assert not kill_log.exists()
+
+
+def test_the_chair_does_not_write_the_code():
+    # v0.22.0. A chair that writes the code is also the chair that
+    # cannot review it — and the verifier stops being its eyes and
+    # becomes a formality. The cores carry the rule and the playbook
+    # carries the reasoning; a rewrite that drops either ships a chair
+    # that quietly starts implementing again.
+    for name in CORES:
+        text = flat(_instr(name))
+        assert "does NOT write code" in text, name
+        assert "one mechanical file edit" in text, name
+    book = flat(_playbook())
+    assert "it does not write the code" in book
+    assert "CHAIR'S EYES" in book
+
+
+def test_the_clarify_sweep_scales_but_the_go_does_not():
+    # v0.22.0. The SWEEP is what scales with size; the go does not. The
+    # docs say WHY without describing the hook's mechanics, because two
+    # earlier attempts to describe them shipped two different false
+    # claims — the gate has several paths (prompt length, tracker-task
+    # count) and exempts forks, so "you will be denied" is wrong and
+    # "you will not be denied" is wrong too. The behaviour itself is
+    # pinned in test_the_approval_gate_is_prompt_sized_not_work_sized
+    # in test_spawn_guard.py; here we pin that the docs rest the rule on
+    # the v0.21.0 lesson rather than on enforcement.
+    for name in CORES:
+        text = flat(_instr(name))
+        assert "their words, never yours — at EVERY size" in text, name
+        assert "Scale the SWEEP, never the go" in text, name
+        assert "The gates do NOT catch every path" in text, name
+    text = flat(_clarify())
+    assert "Scale the ceremony to the work" in text
+    assert "`## Approved` is required at every size" in text
+    assert "not because a hook will force it" in text
+
+
+def test_the_verifier_carries_a_floor_and_a_convergence_stop():
+    # v0.22.0. Two user decisions: the verifier never runs at `low`, and
+    # a cycle that repeats a finding is disagreement rather than
+    # progress — a third fresh reader repeats it again, so it goes to
+    # the user instead of burning the cap.
+    for name in CORES:
+        text = flat(_instr(name))
+        assert "effort floor `medium`" in text, name
+        assert "repeated finding is disagreement" in text, name
+    book = flat(_playbook())
+    assert "effort FLOOR `medium` — never `low`" in book
+    assert "a repeated finding is disagreement, not progress" in book
+
+
+def test_the_per_wave_review_has_a_home_and_a_lifecycle():
+    # v0.22.0. Wave reviews write to FINDINGS-*.md, never LEDGER*.md:
+    # find_ledger() takes the most recent LEDGER*.md, so a findings file
+    # wearing that name carries no `## Clarified`/`## Approved` and
+    # denies every later spawn. One file PER WAVE, because the reviews
+    # run in the background and concurrent appends to one shared file
+    # lose a whole wave silently. And a pinned REF, not the working tree
+    # the next wave is already editing — worded so it still holds when
+    # the wave's editors ran in worktrees and have to land first.
+    book = flat(_playbook())
+    assert "FINDINGS-<topic>-w<N>.md" in book
+    assert "kept OUT of LEDGER*.md" in book
+    assert "after any worktree branches are merged back" in book
+    assert "never append to one file and clobber each other" in book
+    for name in CORES:
+        assert "FINDINGS-*.md" in flat(_instr(name)), name
+
+
+def test_a_skipped_verification_is_deferred_not_dropped():
+    # v0.22.0. A skipped verification leaves `- [ ] V.` open, and
+    # ledger_guard_stop holds the turn end over it — once per session
+    # per ledger, not forever, but the item never goes away on its own.
+    # The skip is a DEFERRAL the USER grants: `- [~]` stops matching the
+    # guard's open-item regex, so it IS a close, and the docs have to
+    # say whose close it is. `- [x]` stays the verifier's alone.
+    book = flat(_playbook())
+    assert "`- [~] deferred: <reason>`" in book
+    assert "a deferral the USER granted" in book
+    assert "`- [x]` still belongs to the verifier alone" in book
+    for name in CORES:
+        assert "recorded `- [~] deferred:`" in flat(_instr(name)), name
+
+
+def test_the_whole_injection_stays_under_the_hook_cap(tmp_path):
+    # The core diet pin is a proxy; THIS is the real limit. What reaches
+    # the chair is core + instructions/reply-shape.md + the watchdog
+    # placeholder resolved to an absolute plugin path, and v0.8.0 shipped
+    # 10,069 chars of it and got silently truncated. Every raise of the
+    # core pin moves this sum, so the sum is what gets asserted — a
+    # per-file budget cannot see it.
+    for model in ("claude-opus-5", "claude-fable-5"):
+        text = context_of(run_hook(
+            INJECT, {"model": model, "session_id": f"s-cap-{model}"},
+            env_extra={"CLAUDE_PLUGIN_ROOT": str(REPO)}, tmpdir=tmp_path))
+        assert len(text) < 10000, f"{model}: injected {len(text)} chars — near the 10k hook cap"

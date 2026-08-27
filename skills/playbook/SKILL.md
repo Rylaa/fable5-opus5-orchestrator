@@ -81,7 +81,27 @@ park a name no log can match — a standing `unborn` alarm instead of a
 gap.
 
 Nothing is killed for you. On an alarm: ping; with no reply dismiss the
-pane and re-spawn, or do the work yourself — and say so.
+pane and RE-SPAWN — that is the default, because the work was delegated
+for a reason and a stall does not shrink it. Taking it back yourself is
+bounded by Rule 0 like anything else: one mechanical file, and you say
+so.
+
+## What the chair actually does
+
+The chair's one act is the comparison: I said this, you did that. It
+owns the work, hands it out, sequences it, judges what comes back — it
+does not write the code. That comparison needs an account of the
+delivery it can TRUST, and the builder's own report is not one: the
+party being checked wrote it. The verifier is the CHAIR'S EYES, not a
+gate at the end. Reading delegates; judgement does not. So the chair
+reads reports, not diffs, and opens the code only when a report cannot
+settle it — worker and verifier disagree, the report itself looks
+wrong, or the decision hinges on short exact content, which Chair
+context hygiene below tells you to read for yourself.
+
+Rule 0's one writing exception — a single mechanical file — still
+cannot close itself. Its `V.` goes to the verifier, or to the deferral
+the user grants under SKIPPING; either way the reader is not you.
 
 ## Verification procedure
 
@@ -92,10 +112,53 @@ report paths. Never the raw scratch dump, and never "go find what
 changed": a verifier that must locate the change spends its budget
 looking instead of checking. Its only job is to find what is missing,
 wrong, or unaddressed, item by item — and only it closes the `V.` ledger
-item. It is ONE call over the whole change, not one per phase, and the
-chair sizes its effort like any other spawn. Findings become new phases;
-re-verify after fixes. CAP: 3 verify→fix cycles, then STOP and report
-open items to the user.
+item. It is ONE call over the whole change, not one per phase.
+
+TIER AND EFFORT. opus, effort FLOOR `medium` — never `low`. `xhigh` is
+the normal ceiling; `max` is for complex STRUCTURE, not mere size.
+Size it on how hard the change is to JUDGE, never on line count: a
+hundred one-line mechanical edits are `medium`, three files of
+interlocking state are `xhigh`.
+
+CYCLES. Findings become new phases; re-verify. Stop as soon as a cycle
+finds nothing NEW — a repeated finding is disagreement, not progress,
+and a third fresh reader repeats it again: put it to the user instead.
+CAP: 3 verify→fix cycles regardless, then STOP and report open items.
+
+PER-WAVE REVIEW, long jobs. Review each wave as it LANDS instead of
+saving it all for the end. It runs in the BACKGROUND — the chair sends
+the next wave meanwhile — against a PINNED ref: the sha in the chair's
+repo where that wave's work landed, after any worktree branches are
+merged back. Never the live working tree the next wave is editing, and
+never a wave whose output has not landed yet — that review waits for it.
+
+Each wave writes its OWN file, ./.workflow/FINDINGS-<topic>-w<N>.md, so
+two background reviewers never append to one file and clobber each
+other. Ledger form, `- [ ] W2.3 <finding>`, kept OUT of LEDGER*.md:
+hooks read that path and raw findings there fire the stop guard on
+noise — and one NAMED LEDGER-* is worse still, because find_ledger()
+takes the most recent LEDGER*.md and a file carrying no
+`## Clarified`/`## Approved` denies every later spawn. The chair
+promotes the real ones into numbered ledger items and closes the W-item
+`- [x]` when it does; the wave files retire with the topic. Nothing
+enforces that either: no hook reads FINDINGS-*, so a W-item you forget
+to promote is in no ledger, reaches no final pass, and goes when the
+topic does. Promotion is a habit, not a guard.
+
+The final pass reads those files instead of re-deriving, and narrows to
+what no per-wave review can see — items no wave claimed, and collisions
+where separate waves touched the same files.
+
+SKIPPING. On a small diff the chair may PROPOSE a skip. With the user's
+ok `V.` is recorded `- [~] deferred: <reason>` — a deferral the USER
+granted, never a pass the chair awarded itself, and `- [x]` still
+belongs to the verifier alone. When the diff is the chair's own lone
+mechanical edit, SAY so in the proposal: the user becomes the fresh
+reader, and they need to know that is what they are agreeing to.
+Nothing enforces any of this — the stop guard only stops counting a
+line once it is no longer `- [ ]`, so `- [~]` with no reason and no
+user behind it closes just as quietly. The marker is a record of a
+decision someone made, not proof that they made it.
 
 ## Chair context hygiene
 
