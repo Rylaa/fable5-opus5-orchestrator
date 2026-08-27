@@ -30,7 +30,9 @@ worker's spec without guessing — "the scan is clean" is what a lazy
 look also produces. Never batched, never capped, never asked when the
 repo answers it. Each question is TWO parts: the question in one plain
 sentence, then one basic line saying why you are asking — what changes
-depending on the answer.
+depending on the answer. Names the reader may not be holding — a term
+YOU introduced, a file, an ID, a past incident — get a one-line
+footnote saying what they ARE; at most two, never the user's own words.
 Record answers and explicit assumptions under `## Clarified` at the TOP
 of the ledger as plain bullets — never checkboxes, those read as
 items. Then state the plan under `## Approved` — in scope, out of

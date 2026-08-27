@@ -22,7 +22,8 @@ thing that would change the work — ONE question per message, each
 derived from the last answer, and never something the repo already
 answers. Every QUESTION is two parts — the question in one plain
 sentence, then one basic line saying why you are asking it and what
-changes depending on the answer. Every RECOMMENDATION carries its own
+changes depending on the answer — plus a one-line footnote for any name
+the reader may not be holding, saying what it IS. Every RECOMMENDATION carries its own
 line of why: a marked option with no reason gets rubber-stamped, not
 judged.
 

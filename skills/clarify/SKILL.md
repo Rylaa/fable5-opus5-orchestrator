@@ -76,17 +76,23 @@ worker who cannot ask you anything, without guessing at any part of it?
 "The scan turned up nothing" is what a clean request and a lazy look
 produce alike, so it is no test.
 
-Two parts, ALWAYS, in this order:
+Two parts, ALWAYS, and a third when the question needs it:
 
 1. THE QUESTION, one plain sentence. No jargon the user has not used
    first, no compound question, no "and also".
 2. WHY YOU ARE ASKING, one short line under it, in basic words: what
    changes depending on the answer.
+3. A FOOTNOTE, only when the question names something the reader may
+   not be holding — a term YOU introduced, a file, an ID, a past
+   incident. One plain line each, at most two, and say what the thing
+   IS, not why it matters; the why is line 2's job. Never footnote the
+   user's own words back at them.
 
 ```
 Does the new exporter replace the old one, or run beside it?
 Asking because it decides whether I touch the old code path at all —
 beside it is one new file, replacing it is a migration.
+  the old exporter: src/export/legacy.py, the one the nightly job calls.
 ```
 
 The why is not decoration. A question with no stated stake reads as
