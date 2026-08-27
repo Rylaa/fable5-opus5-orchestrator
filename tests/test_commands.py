@@ -22,14 +22,14 @@ def test_command_exists_and_stays_bounded():
     # Loaded in full whenever the user types /fire, so it is a
     # checklist, not a second playbook.
     #
-    # v0.22.0 raised the pin 3500 to 4500. The file was at 2977 and
+    # v0.22.0 raised the pin 3500 to 4700. The file was at 2977 and
     # gained the size-scaled clarify path, the shape of the approval
     # ask, and the verifier's convergence stop. Effort sizing, per-wave
     # review and the skip rule stayed in the playbook on purpose: this
     # file is loaded on every /fire, and duplicating them here is what
     # turns a checklist into a second playbook.
     assert COMMAND.is_file(), f"missing command: {COMMAND}"
-    assert len(_text()) < 4500, f"{len(_text())} chars — over the budget"
+    assert len(_text()) < 4700, f"{len(_text())} chars — over the budget"
 
 
 def test_frontmatter_carries_a_description():
@@ -92,3 +92,4 @@ def test_command_carries_the_v0_22_rules():
     assert "at EVERY size" in text                        # the go does not
     assert 'never treat "nothing denied me" as approval' in text
     assert "repeats a finding is disagreement" in text    # convergence stop
+    assert "Every QUESTION is two parts" in text          # question shape

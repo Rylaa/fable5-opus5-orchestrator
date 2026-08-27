@@ -20,8 +20,11 @@ move on, asking anything that genuinely blocks you exactly as you would
 on big work. Above it, scan across the seven axes and ask the first
 thing that would change the work — ONE question per message, each
 derived from the last answer, and never something the repo already
-answers. Every recommendation carries ONE line of why: a marked option
-with no reason gets rubber-stamped, not judged.
+answers. Every QUESTION is two parts — the question in one plain
+sentence, then one basic line saying why you are asking it and what
+changes depending on the answer. Every RECOMMENDATION carries its own
+line of why: a marked option with no reason gets rubber-stamped, not
+judged.
 
 Stop on the POSITIVE test: could you write the spec for a worker who
 cannot ask you anything, without guessing? No question limit, no

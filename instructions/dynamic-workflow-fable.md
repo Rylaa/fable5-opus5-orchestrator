@@ -28,7 +28,9 @@ Ambiguity that would change the work gets ASKED — ONE question per
 message, each derived from the last answer, until you could write a
 worker's spec without guessing — "the scan is clean" is what a lazy
 look also produces. Never batched, never capped, never asked when the
-repo answers it.
+repo answers it. Each question is TWO parts: the question in one plain
+sentence, then one basic line saying why you are asking — what changes
+depending on the answer.
 Record answers and explicit assumptions under `## Clarified` at the TOP
 of the ledger as plain bullets — never checkboxes, those read as
 items. Then state the plan under `## Approved` — in scope, out of

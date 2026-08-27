@@ -50,15 +50,16 @@ def test_cores_stay_on_the_token_diet():
     # the rule could not be seated at all. Same shape as the 0.5 raise —
     # required, not comfort.
     #
-    # v0.22.0 raised it 4800 to 6300 for three behaviour changes the
+    # v0.22.0 raised it 4800 to 6500 for four behaviour changes the
     # cores have to state or the chair cannot obey them: the chair no
     # longer writes the code (Rule 0), the clarify sweep scales to the
     # work (Rule 0.5), and the verifier carries an effort floor and a
-    # convergence stop (Verification). The opus core was at 4778 with 22
-    # chars of room — none of the three could be seated.
+    # convergence stop (Verification), and every question carrying one
+    # plain line of why it is being asked (Rule 0.5). The opus core was
+    # at 4778 with 22 chars of room — none of them could be seated.
     for name in CORES:
         text = _instr(name)
-        assert len(text) < 6300, f"{name} is {len(text)} chars — over the 6.3k core diet"
+        assert len(text) < 6500, f"{name} is {len(text)} chars — over the 6.5k core diet"
 
 
 def test_switch_notes_stay_tiny():
@@ -143,14 +144,14 @@ def test_clarify_skill_exists_and_stays_bounded():
     # Rule 0.5's detail lives here for the same reason the delegation
     # contract lives in the playbook: the core summarizes, the skill
     # carries the protocol, and neither becomes a dumping ground.
-    # v0.22.0 raised the pin 5000 to 7100. The file was at 4966 and
+    # v0.22.0 raised the pin 5000 to 8000. The file was at 4966 and
     # gained the ceremony-scaling section, the positive stop test, the
-    # reason a recommendation has to carry, and the shape of the
-    # approval ask.
+    # two-part shape every question takes, the reason a recommendation
+    # has to carry, and the shape of the approval ask.
     path = REPO.joinpath(*CLARIFY)
     assert path.is_file(), f"missing clarify skill: {path}"
     text = path.read_text(encoding="utf-8")
-    assert len(text) < 7100, f"SKILL.md is {len(text)} chars — over the 7.1k budget"
+    assert len(text) < 8000, f"SKILL.md is {len(text)} chars — over the 8k budget"
     assert "name: clarify" in text
 
 
@@ -1241,3 +1242,19 @@ def test_the_whole_injection_stays_under_the_hook_cap(tmp_path):
             INJECT, {"model": model, "session_id": f"s-cap-{model}"},
             env_extra={"CLAUDE_PLUGIN_ROOT": str(REPO)}, tmpdir=tmp_path))
         assert len(text) < 10000, f"{model}: injected {len(text)} chars — near the 10k hook cap"
+
+
+def test_questions_carry_their_own_why():
+    # User decision, 2026-08-27: a question with no stated stake reads
+    # as paperwork and gets answered to get past the chair rather than
+    # to decide anything. Every question is the question in one plain
+    # sentence plus one basic line of what changes depending on the
+    # answer — distinct from the pin above, which is about the
+    # recommended ANSWER carrying its reason.
+    for name in CORES:
+        text = flat(_instr(name))
+        assert "Each question is TWO parts" in text, name
+        assert "why you are asking" in text, name
+    text = flat(_clarify())
+    assert "WHY YOU ARE ASKING" in text
+    assert "reads as paperwork" in text

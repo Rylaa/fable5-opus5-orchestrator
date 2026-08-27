@@ -76,6 +76,24 @@ worker who cannot ask you anything, without guessing at any part of it?
 "The scan turned up nothing" is what a clean request and a lazy look
 produce alike, so it is no test.
 
+Two parts, ALWAYS, in this order:
+
+1. THE QUESTION, one plain sentence. No jargon the user has not used
+   first, no compound question, no "and also".
+2. WHY YOU ARE ASKING, one short line under it, in basic words: what
+   changes depending on the answer.
+
+```
+Does the new exporter replace the old one, or run beside it?
+Asking because it decides whether I touch the old code path at all —
+beside it is one new file, replacing it is a migration.
+```
+
+The why is not decoration. A question with no stated stake reads as
+paperwork, and the user answers it to get past you rather than to
+decide something. If you cannot write the why in one plain line, the
+question probably fails the filter above — do not ask it.
+
 Form:
 
 - Choices are nameable (2-4 options) → `AskUserQuestion`, options
