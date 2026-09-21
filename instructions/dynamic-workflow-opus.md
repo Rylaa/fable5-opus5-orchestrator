@@ -32,10 +32,11 @@ verbatim over 10 lines goes to scratch + path. A violating report is
 re-run, not accepted. State what each worker must deliver before you
 spawn it — a worker cannot ask you anything mid-task.
 
-## Rule 2 — spawn discipline
+## Rule 2 — spawn discipline (hook-enforced)
 NAME every substantive worker: named teammates run in tmux panes the
 user watches live; an unnamed subagent is a silent spinner. Only
-sub-minute lookups stay unnamed. Spawn independent workers in ONE
+sub-minute lookups stay unnamed — a hook denies the first unnamed
+spawn whose prompt is 1500+ chars. Spawn independent workers in ONE
 message. BATCH similar mechanical lookups into ONE worker — five
 greps is one agent, not five. Parallel EDITORS get
 `isolation: "worktree"` each. Steer via SendMessage; on accepted

@@ -14,9 +14,15 @@ def edit(session="s1", tool="Edit", **kw):
     return {"tool_name": tool, "session_id": session, "tool_input": {}, **kw}
 
 
-def spawn(session="s1", tool="Agent", subagent_type="general-purpose"):
-    return {"tool_name": tool, "session_id": session,
-            "tool_input": {"subagent_type": subagent_type, "prompt": "x"}}
+def spawn(session="s1", tool="Agent", subagent_type="general-purpose",
+          name="w", prompt="x"):
+    tool_input = {"subagent_type": subagent_type, "prompt": prompt}
+    if name is not None:
+        tool_input["name"] = name
+    return {"tool_name": tool, "session_id": session, "tool_input": tool_input}
+
+
+LONG = "x" * 1600   # over the 1500-char naming threshold
 
 
 def denies(result):
@@ -200,3 +206,96 @@ def test_metrics_optout(tmp_path):
     for _ in range(3):
         run(edit(session="nomet"), tmp_path, **env)
     assert not (home / ".claude" / "fable-orch" / "metrics.jsonl").exists()
+
+
+# --- the naming half: an unnamed worker is an invisible worker ---
+
+def test_a_substantial_unnamed_spawn_is_denied(tmp_path):
+    # Named teammates run in tmux panes the user watches live. Measured:
+    # one of two unnamed spawns in a day carried a 6.4k-char
+    # implementation brief — exactly the work the user most wants to
+    # see running, launched where nobody could see it.
+    assert denies(run(spawn(session="u1", name=None, prompt=LONG), tmp_path))
+
+
+def test_a_named_spawn_passes_at_any_length(tmp_path):
+    assert not denies(run(spawn(session="u2", name="mapper", prompt=LONG),
+                          tmp_path))
+
+
+def test_short_lookups_never_need_a_name(tmp_path):
+    # A grep or one fetch is a sub-minute job; a pane for it is noise.
+    for _ in range(4):
+        assert not denies(run(spawn(session="u3", name=None, prompt="grep"),
+                              tmp_path))
+
+
+def test_the_naming_deny_fires_once_per_session(tmp_path):
+    assert denies(run(spawn(session="u4", name=None, prompt=LONG), tmp_path))
+    for _ in range(3):
+        assert not denies(run(spawn(session="u4", name=None, prompt=LONG),
+                              tmp_path))
+
+
+def test_a_blank_name_is_not_a_name(tmp_path):
+    assert denies(run(spawn(session="u5", name="   ", prompt=LONG), tmp_path))
+
+
+def test_the_denied_spawn_still_disarms_the_edit_gate(tmp_path):
+    # The chair was told to re-send WITH a name, and it will. Counting
+    # the retry as a second worker would be wrong, and leaving the edit
+    # gate armed would deny a chair that is plainly delegating.
+    run(spawn(session="u6", name=None, prompt=LONG), tmp_path)
+    for _ in range(4):
+        assert not denies(run(edit(session="u6"), tmp_path))
+
+
+def test_a_fork_never_needs_a_name(tmp_path):
+    # A fork has no pane of its own — it is the chair's own context, so
+    # naming it buys the user nothing.
+    assert not denies(run(spawn(session="u7", subagent_type="fork",
+                                name=None, prompt=LONG), tmp_path))
+
+
+def test_teammates_are_not_asked_to_name_their_spawns(tmp_path):
+    env = fake_ps_env(tmp_path, "1 claude --agent-id w@s --agent-name w")
+    assert not denies(run(spawn(session="u8", name=None, prompt=LONG),
+                          tmp_path, **env))
+
+
+def test_naming_threshold_is_configurable(tmp_path):
+    env = {"FABLE_ORCH_NAME_CHARS": "5"}
+    assert denies(run(spawn(session="u9", name=None, prompt="longer than five"),
+                      tmp_path, **env))
+
+
+def test_zero_threshold_disables_the_naming_gate(tmp_path):
+    for value, session in (("0", "ua"), ("-1", "ub")):
+        assert not denies(run(spawn(session=session, name=None, prompt=LONG),
+                              tmp_path, FABLE_ORCH_NAME_CHARS=value))
+
+
+def test_the_escape_hatch_covers_both_halves(tmp_path):
+    env = {"FABLE_ORCH_SOLO_GUARD": "0"}
+    assert not denies(run(spawn(session="uc", name=None, prompt=LONG),
+                          tmp_path, **env))
+
+
+def test_naming_deny_reason_says_what_to_do(tmp_path):
+    reason = run(spawn(session="ud", name=None, prompt=LONG), tmp_path)[
+        "hookSpecificOutput"]["permissionDecisionReason"]
+    assert "name" in reason
+    assert "tmux pane" in reason
+    assert "fires once per session" in reason
+
+
+def test_naming_metrics(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    env = {"HOME": str(home), "FABLE_ORCH_METRICS": "1"}
+    for _ in range(2):
+        run(spawn(session="ue", name=None, prompt=LONG), tmp_path, **env)
+    log = home / ".claude" / "fable-orch" / "metrics.jsonl"
+    events = [json.loads(l)["event"]
+              for l in log.read_text(encoding="utf-8").strip().splitlines()]
+    assert events == ["unnamed_spawn_deny", "unnamed_spawn_suppressed"]

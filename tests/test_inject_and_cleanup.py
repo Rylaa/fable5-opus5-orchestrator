@@ -91,7 +91,12 @@ def test_profiles_name_substantive_workers():
     # subagents for substantive work. Survived the v0.15.0 diet in both
     # cores; the lifecycle detail moved to the playbook.
     for name in CORES:
-        assert "NAME every substantive worker" in _flat(_instr(name)), name
+        text = _flat(_instr(name))
+        assert "NAME every substantive worker" in text, name
+        # v0.16.1: the rule got teeth, and the core must say so — a
+        # chair that does not know the hook exists reads its deny as a
+        # harness bug instead of as the rule it already agreed to.
+        assert "a hook denies the first unnamed spawn" in text, name
     assert "NAME every substantive worker" in _flat(_playbook())
 
 

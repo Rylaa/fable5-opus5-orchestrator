@@ -100,7 +100,15 @@ It is a nudge, not a wall. Two edits pass free, the deny fires **once per sessio
 
 **Not covered on purpose:** `Bash` heredocs and `sed -i`. Gating Bash would mean parsing shell to tell `cat > file` from `cat file`, and a guard that misreads a read as a write is worse than one with a known hole.
 
-### 3 · The per-prompt reminder
+### 3 · The naming gate — an unnamed worker is an invisible worker
+
+Same hook, second question. A **named** teammate runs in a tmux pane you watch live and its lifecycle reaches the chat; an **unnamed** subagent is a silent spinner until it returns. Rule 2 has always said to name them, and nothing checked — so the first spawn of a session whose prompt is **1500+ chars** and carries no `name` is denied once, with the label format in the message.
+
+Short lookups are exempt by that same length: a grep or one fetch never needs a pane. Forks are exempt too — a fork is the chair's own context and has no pane of its own.
+
+The denied spawn still counts as delegating, so the edit gate stays disarmed: the chair was told to re-send *with a name*, and its retry is the same worker, not a second one.
+
+### 4 · The per-prompt reminder
 
 The core profile arrives once, at SessionStart, and then competes with everything that comes after it. A ~35-token line rides every prompt instead:
 
@@ -184,6 +192,7 @@ Set these in `~/.claude/settings.json` under `"env"`.
 │ Env var                       │ Default            │ Meaning                                    │
 ├───────────────────────────────┼────────────────────┼────────────────────────────────────────────┤
 │ FABLE_ORCH_SOLO_EDITS         │ 3                  │ deny at the Nth chair edit; 0 disables     │
+│ FABLE_ORCH_NAME_CHARS         │ 1500               │ spawn prompt size that needs a name; 0 off │
 │ FABLE_ORCH_SOLO_GUARD         │ (on)               │ 0 disables the solo gate entirely          │
 │ FABLE_ORCH_REMIND             │ (on)               │ 0 disables the per-prompt line             │
 │ FABLE_ORCH_PROFILE            │ auto               │ pin the chair profile: auto | fable | opus │
@@ -212,13 +221,14 @@ What is new that you will notice: a line on every prompt, and a one-time deny if
 python3 -m pytest tests/ -q
 ```
 
-The hooks are plain stdin/stdout JSON filters, so the tests run them end-to-end as subprocesses: the solo gate's threshold, its once-per-session deny, the spawn exemption and the fork non-exemption, every counted edit tool, teammate detection against a fake `ps`, the env overrides, malformed sidecars and garbage stdin, the per-prompt reminder and its skip, injection and the profile-switch delta, cache cleanup, and teammate reaping against a fake tmux.
+The hooks are plain stdin/stdout JSON filters, so the tests run them end-to-end as subprocesses: the solo gate's threshold, its once-per-session deny, the spawn exemption and the fork non-exemption, every counted edit tool, the naming gate's length threshold and its exemptions, teammate detection against a fake `ps`, the env overrides, malformed sidecars and garbage stdin, the per-prompt reminder and its skip, injection and the profile-switch delta, cache cleanup, and teammate reaping against a fake tmux.
 
 A second layer pins the *content*: the cores stay under budget, both keep requiring the playbook, the decisions that survived past rewrites are asserted line by line, and the retired gates are asserted **absent** — a core that still promises a ledger or a mandatory verifier is a worse lie than never having had one.
 
 ## Honest limitations
 
 - **The solo gate counts edits, not work.** A chair that does everything through `Bash` heredocs never trips it. The per-prompt reminder is the only thing covering that path.
+- **The naming gate measures the brief, not the job.** A short prompt pointing at a long spec passes unnamed, and a verbose brief for a two-minute lookup gets asked for a name it does not need.
 - **It fires once.** By design — but a determined chair can absorb the nudge and carry on solo, and nothing stops it.
 - **Hooks check shape, not fidelity.** A worker spawned to satisfy the gate, then ignored, passes.
 - **Two chairs only.** Fable (primary) and Opus (fallback). Any other model gets the Fable profile.

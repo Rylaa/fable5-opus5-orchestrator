@@ -86,6 +86,12 @@ def main():
         print(f"\nsolo-chair nudges: {sdenies} sessions denied an edit, "
               f"{ssupp} further solo edits after the nudge")
 
+    ndenies = events.get("unnamed_spawn_deny", 0)
+    nsupp = events.get("unnamed_spawn_suppressed", 0)
+    if ndenies or nsupp:
+        print(f"unnamed-worker nudges: {ndenies} sessions asked to name a "
+              f"worker, {nsupp} further unnamed spawns after the nudge")
+
     switches = events.get("inject_switch", 0)
     if switches or gated_changes:
         # Kept apart from the profile counter above: that one counts
