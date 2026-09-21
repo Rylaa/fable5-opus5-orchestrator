@@ -296,7 +296,7 @@ def main():
         data = {}
 
     session_id = data.get("session_id")
-    for prefix in ("fable-orch-model", "fable-orch-stop", "fable-orch-tasks"):
+    for prefix in ("fable-orch-model", "fable-orch-solo"):
         path = _tmp_json(prefix, session_id)
         if path and os.path.isfile(path):
             try:

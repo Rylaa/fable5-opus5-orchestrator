@@ -4,9 +4,11 @@
 
 **Run Claude Fable 5 all day — without watching the usage meter.**
 
-Fable 5 is the best chair a Claude Code session can have — and the most expensive seat in the house. Let it type every token itself and the session ends rate-limited, waiting out the reset window.
+Fable 5 is the best chair a Claude Code session can have, and the most expensive seat in the house. Let it type every token itself and the session ends rate-limited, waiting out the reset window.
 
-This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends tokens only on planning, arbitration, and final decisions. The volume — implementation, research, briefs, review, bulk reading — goes to **Sonnet 5**; the predictably hard slices — architecture, irreversible migrations, security review — go **directly to Opus 5**, which doubles as the escalation lane. The chair sizes every worker's reasoning effort to the job — `low` for mechanical sweeps, `max` for architecture and security — and **every close gets fresh-eyes verification** from **Opus 5 or Fable 5**, one bounded call per workflow, at an effort that scales with what the change can break.
+This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends tokens on planning, arbitration and final decisions. Everything else goes to named workers: the volume — implementation, research, briefs, review, bulk reading — to **Sonnet 5**, and the predictably hard slices — architecture, irreversible migrations, security review — straight to **Opus 5**, which doubles as the escalation lane. The chair sizes each worker's reasoning effort to the job, `low` for mechanical sweeps, `max` for architecture and security.
+
+**No ledger, no interview, no mandatory verification phase.** Earlier versions gated the act of delegating with a requirements file and a clarification loop. Both are gone. What is left is one rule with teeth: delegation is the default, and a hook notices when the chair quietly does the work itself.
 
 ## The division of labor
 
@@ -17,7 +19,7 @@ This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends t
                         │  sizes tier + effort per task   │
                         └────────────────┬────────────────┘
                                          │
-                specs & ledger down      │      briefs & verdicts up
+                    specs down           │           briefs up
                                          │
            ┌────────────────────────┬────┴───────────────────┬────────────────────────┐
            ▼                        ▼                        ▼                        ▼
@@ -30,149 +32,96 @@ This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends t
                                                              │ uncertain /            │ beyond
                                                              │ high stakes            │ opus
                                                           ┌──▼────────────────────────▼──┐
-                                                          │  the valve · by blast radius │
-                                                          │  verify: OPUS 5 / FABLE 5    │
-                                                          │  escalate: OPUS 5 → FABLE 5  │
+                                                          │   escalation · one way only  │
+                                                          │   OPUS 5 → FABLE 5 → stop    │
                                                           └──────────────────────────────┘
 ```
 
-Fable thinks. Sonnet carries the volume, Opus takes the hard slices. Opus or Fable checks the close. Your limit pays for the thinking plus at most one verification per close:
+Your Fable limit pays for the thinking and almost nothing else:
 
 ```
 ┌─────────────────────────────────────────┬─────────────────┬─────────────────────┐
 │ Work                                    │ Runs on         │ Fable limit pays    │
 ├─────────────────────────────────────────┼─────────────────┼─────────────────────┤
-│ Phase planning, arbitration, decisions  │ Fable 5 (chair) │ yes                 │
-│ Implementation, tests, refactors        │ Sonnet 5        │ nothing             │
-│ Source briefs, filtering, code review   │ Sonnet 5        │ nothing             │
-│ Bulk gathering (fetch, grep, scan)      │ Sonnet 5 (low)  │ nothing             │
-│ Hard slices: architecture, migrations   │ Opus 5 (direct) │ nothing             │
-│ Security / adversarial review           │ Opus 5 (max)    │ nothing             │
-│ Escalations (sonnet "uncertain")        │ Opus → Fable    │ mostly nothing      │
-│ Fresh-eyes verification — EVERY close   │ Opus/Fable 5    │ at most 1 per close │
+│ Planning, arbitration, decisions         │ Fable 5 (chair) │ yes                 │
+│ Implementation, tests, refactors         │ Sonnet 5        │ nothing             │
+│ Source briefs, filtering, code review    │ Sonnet 5        │ nothing             │
+│ Bulk gathering (fetch, grep, scan)       │ Sonnet 5 (low)  │ nothing             │
+│ Hard slices: architecture, migrations    │ Opus 5 (direct) │ nothing             │
+│ Security / adversarial review            │ Opus 5 (max)    │ nothing             │
+│ Escalations (sonnet "uncertain")         │ Opus → Fable    │ mostly nothing      │
 └─────────────────────────────────────────┴─────────────────┴─────────────────────┘
 ```
 
-## Why Fable 5 × Sonnet 5 × Opus 5 is the right trio
+## Why this trio
 
 - **Fable tokens are the heaviest draw on your limit.** Every token of bulk work kept off the chair extends how long Fable stays in it.
-- **Sonnet 5 carries the volume.** Near-Opus quality on coding and agentic work, with the full effort ladder (`low` → `max`) — and the chair dials that ladder per task: mechanical sweeps run lean, routine judgment runs high.
-- **Opus 5 takes the hard slices directly.** Architecture tradeoffs, irreversible migrations, complex multi-system implementation, and all security/adversarial review are assigned straight to Opus — no failed Sonnet pass required — and Opus doubles as the escalation lane.
-- **The valve is two-tier, and it never opens by itself.** Fresh-eyes verification is mandatory on **every** close — what scales is the effort, not whether it happens. `max` is reserved for what it is worth paying for: architecture, irreversible changes, security, and the largest closes; a small, low-risk, non-security close verifies at `high`. It runs on Opus 5 or Fable 5 — Opus spares the Fable limit; the largest closes still get Fable, the strongest model at the single highest-stakes moment. Anthropic measured this worker+verifier split: Sonnet 5 with a Fable 5 advisor checking its work lands within 10% of Fable 5's score on the whole task. Escalations climb sonnet → opus → fable, with security reviews kept off Fable, whose classifiers decline benign security work most readily. Any tier can still decline it — the profile's rule is to rerun the refused task unchanged on another tier and, if that tier declines too, stop and tell you, never to reword the request past a classifier. A worker that returns "uncertain" never bounces back to the chair.
+- **Sonnet 5 carries the volume.** Near-Opus quality on coding and agentic work, with the full effort ladder (`low` → `max`) — and the chair dials that ladder per task.
+- **Opus 5 takes the hard slices directly.** Architecture tradeoffs, irreversible migrations, complex multi-system implementation and all security review are assigned straight to Opus, with no failed Sonnet pass required.
+- **Escalation is one-way.** Sonnet returns "uncertain" and it goes to Opus, never back to the chair. If a tier declines a task it is re-run **unchanged** on another tier, never reworded to slip past a classifier. If that tier declines too, the chair stops and tells you.
 
 ## What the plugin does
 
-Three layers, all mechanical — no CLAUDE.md editing, no manual routing.
-
 ### 1 · The Fable profile — a slim core plus a playbook
 
-A SessionStart hook injects the Fable-in-chair profile ([`instructions/dynamic-workflow-fable.md`](instructions/dynamic-workflow-fable.md)) into every **chair** session — auto-detected per session start, nothing to configure:
+Every chair session starts with a ~3.3k-char core profile: the default (delegate), the disk hand-off, spawn discipline, routing and effort. The detail lives in the `orchestrator:playbook` skill, which the core requires **before the first delegation** — the research pipeline, the worker report contract, spawn economics, the fork cap, teammate lifecycle. Sessions that never delegate never pay for it.
+
+Three rules keep worker output from undoing the saving:
+
+- Reports are capped at 40 lines. Verbatim over ten lines goes to `./.workflow/scratch/` and the report carries the path. A violating report is re-run, not accepted.
+- Research is one worker per source: fetch verbatim to disk first, then brief from that copy. One synthesizer reads across the briefs.
+- Similar mechanical work is batched. Five greps are one agent with a checklist, not five agents.
+
+**Teammates never get the profile.** Named workers are full sessions and fire SessionStart too, but the profile is written for the chair alone: delivered to a worker it says "you are the orchestrator" and invites it to spawn workers of its own, inverting the discipline (measured: 172 of 270 injected sessions were teammates). The injector walks the process tree for `--agent-id` and skips them, while still writing the session marker so the other hooks keep working.
+
+**Two chairs.** Fable is primary; when its limit runs dry and you move the chair to Opus, the OPUS profile keeps the same discipline with the fable tier resting. A mid-session switch on a `resume` gets a short delta note instead of the whole core.
+
+### 2 · The solo guard — the gate that watches the chair
+
+This is the part with teeth, and it is new in v0.16.0.
+
+Every earlier version gated **delegation**: spawn prompts over a length threshold, the third tracker task, the close with open ledger items. A chair that never delegated never met a gate at all — measured in the wild, five consecutive sessions received the profile in full and spawned zero workers while hand-editing dozens of files.
+
+So the gate now watches the other side:
 
 ```
-┌──────────────────────────┬──────────────────────────────┐
-│ Scarce resource          │ your usage limit             │
-│ Bounded / medium work    │ delegated                    │
-│ Requirements Ledger      │ file, before any delegation  │
-│ Worker effort            │ sized per task by the chair  │
-│ Verification             │ fresh-eyes on every close    │
-│ Disk hand-off            │ the default                  │
-│ Subagent report cap      │ 40 lines; bulk to disk       │
-│ Detail (full playbook)   │ skill, loaded on demand      │
-│ Spawn-guard threshold    │ 1500 chars                   │
-│ Task-list gate           │ 3rd task needs the ledger    │
-└──────────────────────────┴──────────────────────────────┘
+┌──────────────────────────────┬───────────────────────────────────────────────┐
+│ Tool                         │ What the hook does                            │
+├──────────────────────────────┼───────────────────────────────────────────────┤
+│ Agent · Task                 │ records a spawn, always allows                │
+│ Edit · Write · MultiEdit ·   │ counts; the 3rd in a session that has spawned │
+│ NotebookEdit                 │ nothing draws ONE deny, then stays quiet      │
+└──────────────────────────────┴───────────────────────────────────────────────┘
 ```
 
-**The injected text is deliberately small.** It is prepended to every chair session, so every character is paid on every start — and most of it is detail the chair needs *once*, at its first delegation, not on the way in. So the core carries only what must be true from the first token (threshold, ledger, disk hand-off, spawn discipline, routing, the verification rule) and requires the chair to load [`skills/playbook/SKILL.md`](skills/playbook/SKILL.md) — the `orchestrator:playbook` skill, auto-discovered from the plugin — **before its first delegation**. The playbook holds the full contract: research pipeline, output contract, spawn economics, forks, teammate lifecycle, verification procedure. Sessions that never delegate never pay for it.
+It is a nudge, not a wall. Two edits pass free, the deny fires **once per session**, and the message tells the chair how to proceed if it really was a single-sitting fix. One spawned worker disarms it for the rest of the session — a chair that is orchestrating can make its own small edits.
 
-The core routes subagents by tier name (`sonnet`, `opus`, `fable`), keeps bulk material on disk (`./.workflow/scratch/` — the chair receives briefs and verdicts, never dumps), and has the chair size each delegated agent's reasoning effort to the work — `low` for mechanical sweeps, `high` for implementation and review, `xhigh` for the hardest coding, `max` for architecture, migrations, security, and escalations. Context-heavy follow-ups go to a **fork** (`subagent_type: "fork"`), which inherits the full conversation with no spec-writing tax, capped at two per session.
+**Exempt:** teammates (a worker's job *is* to edit files), and any session that has already spawned a worker. A **fork** does not count as delegating: it clones the chair's own context at the chair's own model, so forking a plan's phases is disguised solo work.
 
-Three rules in the contract exist purely to keep worker output from undoing the saving:
+**Not covered on purpose:** `Bash` heredocs and `sed -i`. Gating Bash would mean parsing shell to tell `cat > file` from `cat file`, and a guard that misreads a read as a write is worse than one with a known hole.
 
-- **Reports are capped at 40 lines.** Any verbatim block over ten lines goes to `./.workflow/scratch/` and the report carries the path. A report that violates the contract is rejected and re-run, not silently accepted.
-- **Research is one worker per source, not two.** A single Sonnet agent fetches the source **verbatim to disk first** — the disk copy is the audit trail, with no relevance filtering during the fetch — and only then returns a brief built from that copy: claims, evidence, exact quotes, confidence, contradictions, and the path. One synthesizer reads across the briefs. The chair checks the synthesis against the ledger and decides; intermediates never enter its context.
-- **Similar mechanical work is batched into one worker.** Every spawn pays a fixed overhead — system prompt, project rules, tool schemas — before doing anything useful. Five greps are one agent with a checklist, not five agents. Separate spawns are for genuine parallelism or worktree isolation, which earn that overhead back.
+### 3 · The per-prompt reminder
 
-**When the Fable limit runs dry**, move the chair to Opus (`/model`): the injector serves the matching OPUS profile ([`instructions/dynamic-workflow-opus.md`](instructions/dynamic-workflow-opus.md)) — same discipline, the fable tier rests, fresh-eyes verification and the escalation ceiling fall to a fresh Opus agent. Opus is a drop-in chair: it orchestrates exactly as Fable did, only Opus now sits in the seat.
-
-**Switching chairs mid-session costs a few lines, not a whole profile.** If a session that already received a core profile is **resumed** with the other one selected, the full core is not sent again — it is still in that session's context, and re-sending it spends the very limit the switch is trying to preserve. A short switch note ([`instructions/profile-switch-to-opus.md`](instructions/profile-switch-to-opus.md), [`instructions/profile-switch-to-fable.md`](instructions/profile-switch-to-fable.md)) carries only what changed.
-
-The delta is **resume-only, on purpose.** A `compact` re-fire happens precisely *because* the context was rewritten, and a `clear` because it was discarded; on either — and on any future session-start kind the injector does not recognise — the profile change is delivered as the **full core**, because the switch note's "every other rule from the already-injected core profile stays in force" would otherwise be a promise the chair has no way to check. A plain re-fire on an unchanged chair is untouched and always gets the full core, as does any session whose marker records no previous injection. The trade is deliberately lopsided: an unnecessary full core costs a few thousand characters, while a delta landing on a wiped context costs the ledger rule, the threshold, and the routing — silently.
-
-Detection runs at each session start, in priority order: an explicit `FABLE_ORCH_PROFILE=fable|opus` pin, then the SessionStart payload's model, then **the default model `/model` wrote to `settings.json`** (so an Opus default is honored even when the harness omits the payload model on a resume/compact — the case that used to fall back to Fable), then the last model this session saw. A mid-session `/model` switch still only takes effect at the next session start (SessionStart is the only injection point) — but the settings fallback makes that next start reliable. To pin the chair regardless of detection, set `FABLE_ORCH_PROFILE=opus` while you ride out the Fable limit, `fable` (or unset) when it resets.
-
-**Teammates never get the profile.** Named agent-teams workers are full sessions and fire SessionStart too — but the profile is written for the chair alone: delivered to a worker it says "you are the orchestrator" and invites it to spawn subagents of its own, inverting the discipline (measured in the wild: 172 of 270 injected sessions were teammates). The injector runs the same teammate detection as the close guard — `--agent-id` on the nearest `claude` ancestor — and skips the injection while still writing the session marker, so every other guard keeps working. `FABLE_ORCH_TEAMMATE_INJECT=1` restores the old inject-everyone behaviour.
-
-### 2 · A Requirements Ledger
-
-Before serious delegation the chair writes every requirement, constraint, and edge case as one checkbox line in `./.workflow/LEDGER.md` — or `LEDGER-<topic>.md` beside it when one project runs several. The hooks watch every `LEDGER*.md` in that directory, newest first; a name *ending* in `-archive.md` is retired and silences the close guard for good, so a live `LEDGER-archive-migration.md` still counts. Files survive context compaction; conversation context does not.
-
-```markdown
-- [ ] 1. Every explicit requirement, one line each
-- [ ] 2. Implicit expectations and constraints too
-- [x] 3. Marked done only after verification confirms it
-- [~] 4. deferred: user approved postponing this
-```
-
-### 3 · Guard hooks
-
-Instructions are *advice*; hooks are *mechanism*. The failure points that get skipped under pressure are fenced:
-
-**Spawn guard** (`PreToolUse` on `Agent|Task|Workflow`) — gates the spawn `prompt`, or the Workflow `script`:
+The core profile arrives once, at SessionStart, and then competes with everything that comes after it. A ~35-token line rides every prompt instead:
 
 ```
-spawn (Agent / Task / Workflow)
-  │
-  ├─ text ≤ threshold (default 1500) .............. PASS  (short spawns are never taxed)
-  │
-  └─ text > threshold
-       │
-       ├─ subagent_type == "fork" ................. PASS  (forks already see the ledger)
-       │
-       ├─ ACTIVE .workflow/LEDGER*.md found ....... PASS  (cite its items per agent)
-       │  (cwd → repo root / $HOME)
-       │
-       └─ no ledger — or only a stale one ......... DENY  → "write the ledger first;
-                                                     small single-phase → do directly"
+[orchestrator] You are the CHAIR. Delegate by default: name the workers,
+spec them, spawn independent ones in one message. Solo only for a
+single-sitting fix the user asked for directly.
 ```
 
-A ledger is *stale* when every item is closed AND it was last touched before this session started — last week's finished ledger doesn't disarm the gates for a new task. Open items, or any touch during this session, keep it active.
-
-**Task guard** (`PreToolUse` on `TaskCreate`) — the solo path the spawn guard can't see. A session that never spawns agents never meets the spawn guard; it just quietly implements a six-phase plan solo on the most expensive model (measured in the wild). The tracker tasks it creates for itself are the tell:
-
-```
-TaskCreate (tracker task)
-  │
-  ├─ ACTIVE .workflow/LEDGER*.md found ............. PASS
-  ├─ fewer than 3 ledgerless tasks this session .... PASS  (small task lists are fine)
-  │
-  └─ 3rd ledgerless task ........................... DENY once → "multi-phase work:
-                                                     write the ledger, delegate the
-                                                     phases to workers" — then quiet
-```
-
-**Close guard** (`Stop`) — chair only; a named teammate's close is never held on the chair's ledger (`FABLE_ORCH_TEAMMATE_STOP=1` restores the old behaviour):
-
-```
-turn ends
-  │
-  ├─ no ledger on the search path (cwd → repo root / $HOME) ... pass
-  ├─ every item "- [x]" or "- [~] deferred" ................... pass
-  ├─ ledger untouched by this session ......................... pass
-  ├─ this session already got its reminder .................... pass
-  │
-  └─ open items, touched here, first time ..................... BLOCK once,
-       listing the items: finish them, defer with user approval, or
-       acknowledge in one line and move on — one reminder per session.
-       Archive paused ledgers (LEDGER-<topic>-archive.md) to silence for
-       good; LEDGER_GUARD_STOP_MODE=every-turn restores per-turn blocking.
-```
-
-A fourth hook (`SessionEnd`) cleans up after the session: its temp files and **its tmux teammates**. The agent-teams backend parks teammates in tmux panes and never reaps them (measured in the wild: 63 orphaned agents holding ~5 GB; later, 9 panes parked for 11-30 hours) — on current Claude Code those panes sit inside **your own default tmux server**, on older versions in dedicated `claude-swarm-*` servers. The hook kills the session's own teammates wherever they live: the legacy `claude-swarm-<pid>` server whole (matched via the hook's nearest-claude ancestor or the `@session-<id>` pane tag), and on shared servers only the PANES carrying this session's `--parent-session-id` — a non-swarm server itself is never killed. Swarm servers idle 48h+ are swept too. Finished teammates don't wait for a SessionEnd that may be days away: a rate-limited sweep piggybacked on the Stop hook samples every teammate pane's CPU and kills panes idling below ~1% CPU for `FABLE_ORCH_TEAMMATE_IDLE_H` hours (default 1). A parked teammate still burns a mailbox-polling heartbeat, so idleness is a sustained low RATE, not a frozen clock — working siblings re-baseline and survive. The injected profile adds the front line: the chair dismisses a teammate (`shutdown_request`) the moment its final report is accepted.
+It restates the default and nothing else — routing, effort and the report contract stay in the core and the playbook, where they are read once. Teammates are skipped.
 
 ## Watching the team live
 
-Teammates are real `claude` processes in tmux panes — you can watch every agent think, call tools, and type in real time. Current Claude Code opens the panes inside **your own default tmux server**: if you launched `claude` from inside tmux, the team appears as extra panes right in your window (`prefix q` jumps between panes, `prefix z` zooms one to full screen, `prefix w` shows a session/window tree).
+Teammates are real `claude` processes in tmux panes — you can watch every agent think, call tools, and type in real time. Claude Code opens the panes inside **your own default tmux server**: if you launched `claude` from inside tmux, the team appears as extra panes right in your window (`prefix q` jumps between panes, `prefix z` zooms one to full screen, `prefix w` shows a session/window tree).
+
+Launch `claude` **outside** tmux and the panes go to a separate detached session instead, which you have to `tmux attach` to see. If you want the team in the window you are already looking at, start tmux first:
+
+```
+tmux new-session -s claude
+claude
+```
 
 ```
 # who is on the field, by name
@@ -180,13 +129,9 @@ ps -axo pid=,command= | grep -- --agent-id
 
 # every pane, mapped: session, pane id, pid, what it runs
 tmux list-panes -a -F '#{session_name} #{pane_id} #{pane_pid} #{pane_current_command}'
-
-# older Claude Code parked teams in dedicated servers — attach read-only
-ls /tmp/tmux-$UID | grep claude-swarm
-tmux -S /tmp/tmux-$UID/claude-swarm-<pid> attach -r
 ```
 
-Watch, don't type: a teammate's pane is its working terminal, and stray input interferes with it — talk to agents through the lead session instead. The reaper keeps this view honest: dismissed and idle teammates disappear from the list instead of stacking up.
+Watch, don't type: a teammate's pane is its working terminal, and stray input interferes with it — talk to agents through the lead session instead. The reaper keeps this view honest: dismissed and idle teammates disappear instead of stacking up.
 
 ## Install
 
@@ -195,46 +140,40 @@ Watch, don't type: a teammate's pane is its working terminal, and stray input in
 /plugin install orchestrator@fable-orchestrator
 ```
 
-Requires `python3` on PATH; macOS and Linux only — the hooks also shell out to `tmux` for teammate reaping, and Windows is not supported. No configuration needed.
+Restart Claude Code afterwards — **a plugin's hooks are registered when the CLI process starts**, so a session already running (including one you `/clear`) keeps the hook set it booted with and will not see the plugin.
+
+Requires `python3` on PATH; macOS and Linux only — the hooks shell out to `tmux` for teammate reaping, and Windows is not supported. No configuration needed.
 
 ### Manual install (without the plugin system)
 
-1. Copy `scripts/ledger_guard_spawn.py`, `scripts/ledger_guard_stop.py`, and `scripts/cleanup_session_cache.py` to `~/.claude/hooks/`.
+1. Copy `scripts/inject_instructions.py`, `scripts/solo_guard.py`, `scripts/remind_chair.py`, `scripts/cleanup_session_cache.py` and `scripts/_shared.py` (every hook imports it) to `~/.claude/hooks/`.
 2. Merge this into `~/.claude/settings.json`:
 
 ```json
 {
   "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "python3 ~/.claude/hooks/inject_instructions.py", "timeout": 10 } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "python3 ~/.claude/hooks/remind_chair.py", "timeout": 10 } ] }
+    ],
     "PreToolUse": [
       {
-        "matcher": "^(Agent|Task|Workflow|TaskCreate)$",
-        "hooks": [
-          { "type": "command", "command": "python3 ~/.claude/hooks/ledger_guard_spawn.py", "timeout": 10 }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          { "type": "command", "command": "python3 ~/.claude/hooks/ledger_guard_stop.py", "timeout": 10 }
-        ]
+        "matcher": "^(Agent|Task|Edit|Write|MultiEdit|NotebookEdit)$",
+        "hooks": [ { "type": "command", "command": "python3 ~/.claude/hooks/solo_guard.py", "timeout": 10 } ]
       }
     ],
     "SessionEnd": [
-      {
-        "hooks": [
-          { "type": "command", "command": "python3 ~/.claude/hooks/cleanup_session_cache.py", "timeout": 20 }
-        ]
-      }
+      { "hooks": [ { "type": "command", "command": "python3 ~/.claude/hooks/cleanup_session_cache.py", "timeout": 20 } ] }
     ]
   }
 }
 ```
 
-3. Append `instructions/dynamic-workflow-fable.md` to `~/.claude/CLAUDE.md`, and copy `skills/playbook/SKILL.md` to `~/.claude/skills/playbook/SKILL.md`. Note the name mismatch: the core text asks for `orchestrator:playbook`, which is the *plugin*-namespaced name and only resolves when the plugin is installed. Copied by hand it is a personal skill listed as plain `playbook` — so either read that instruction as `playbook`, or install as a plugin and skip this step.
-4. Without the SessionStart injector there is no per-session `started` marker, so the stop guard can't tell another session's ledger from yours (every open ledger costs one reminder per session instead of zero) and the spawn/task gates can't ignore stale fully-closed ledgers.
+3. Append `instructions/dynamic-workflow-fable.md` to `~/.claude/CLAUDE.md`, and copy the playbook to `~/.claude/skills/playbook/SKILL.md`. Note the name mismatch: the core asks for `orchestrator:playbook`, which only resolves when the plugin is installed. Copied by hand it is plain `playbook`.
 
-> Don't run the plugin AND the manual install side by side — you'd get every guard twice.
+> Don't run the plugin **and** the manual install side by side — you'd get every hook twice.
 
 ## Configuration
 
@@ -244,12 +183,11 @@ Set these in `~/.claude/settings.json` under `"env"`.
 ┌───────────────────────────────┬────────────────────┬────────────────────────────────────────────┐
 │ Env var                       │ Default            │ Meaning                                    │
 ├───────────────────────────────┼────────────────────┼────────────────────────────────────────────┤
-│ LEDGER_GUARD_THRESHOLD        │ 1500               │ spawn-guard gate (chars)                   │
+│ FABLE_ORCH_SOLO_EDITS         │ 3                  │ deny at the Nth chair edit; 0 disables     │
+│ FABLE_ORCH_SOLO_GUARD         │ (on)               │ 0 disables the solo gate entirely          │
+│ FABLE_ORCH_REMIND             │ (on)               │ 0 disables the per-prompt line             │
 │ FABLE_ORCH_PROFILE            │ auto               │ pin the chair profile: auto | fable | opus │
-│ FABLE_ORCH_TEAMMATE_STOP      │ (off)              │ 1 lets the close guard hold teammates too  │
 │ FABLE_ORCH_TEAMMATE_INJECT    │ (off)              │ 1 injects the profile into teammates too   │
-│ LEDGER_GUARD_TASKS            │ 3                  │ 3rd ledgerless tracker task denied; 0 off  │
-│ LEDGER_GUARD_STOP_MODE        │ once-per-session   │ every-turn restores per-turn blocking      │
 │ FABLE_ORCH_METRICS            │ (on)               │ 0 disables local metrics logging           │
 │ FABLE_ORCH_SWARM_CLEANUP      │ (on)               │ 0 disables all teammate reaping            │
 │ FABLE_ORCH_SWARM_MAX_IDLE_H   │ 48                 │ sweep swarms idle ≥ N hours; 0 disables    │
@@ -258,9 +196,15 @@ Set these in `~/.claude/settings.json` under `"env"`.
 └───────────────────────────────┴────────────────────┴────────────────────────────────────────────┘
 ```
 
-**The session marker.** The SessionStart injector writes a per-session temp file whose immutable `started` timestamp survives resume/clear/compact re-injections — the stop guard compares ledger mtimes against it to decide ownership, and the SessionEnd reaper anchors its cleanup to it. The SessionEnd hook removes the session's temp files and sweeps any older than 96 hours.
+**Metrics.** Every hook appends one event line to `~/.claude/fable-orch/metrics.jsonl` — events only, never prompt content: injections per profile, mid-session switches, solo denies and suppressions, reaps. `python3 scripts/stats.py` prints the summary. Disable with `FABLE_ORCH_METRICS=0`.
 
-**Metrics.** Every hook appends one event line to `~/.claude/fable-orch/metrics.jsonl` (events only — never prompt content): injections per model, mid-session profile switches, spawn/task denies and passes, stop blocks and suppressions, reaps. `python3 scripts/stats.py` prints the summary, so the next "how is this performing?" question is answered with data. Disable with `FABLE_ORCH_METRICS=0`.
+**The session marker.** The injector writes a per-session temp file whose `started` timestamp survives resume/clear/compact. `SessionEnd` removes the session's temp files and sweeps anything older than 96 hours.
+
+## Upgrading from v0.15.x
+
+The ledger is gone, and so are the three gates that enforced it. Nothing breaks: an existing `./.workflow/LEDGER.md` is simply ignored, and the directory is still where scratch material goes. If you liked the ledger, keep writing one — the chair just won't be asked for it.
+
+What is new that you will notice: a line on every prompt, and a one-time deny if the chair edits three files without delegating. Set `FABLE_ORCH_SOLO_EDITS=0` and `FABLE_ORCH_REMIND=0` to run the profile with no enforcement at all.
 
 ## Tests
 
@@ -268,24 +212,19 @@ Set these in `~/.claude/settings.json` under `"env"`.
 python3 -m pytest tests/ -q
 ```
 
-The hooks are plain stdin/stdout JSON filters; the tests run them end-to-end as subprocesses — the spawn threshold and its env override, the fork exemption, Workflow script gating, the task-list gate (counting, one deny per session, session isolation), the upward ledger search and its repo-root/worktree/$HOME boundaries, stop-guard session scoping and ownership, metrics emission and opt-out, injection, the mid-session profile-switch delta, cache cleanup, and teammate reaping (against a fake tmux/ps on PATH). A second layer pins the *content*: the cores stay under their size budget, both keep requiring the playbook skill, and the decisions that survived the diet (fresh-eyes on every close, the fork cap, the report cap, the batching rule) are asserted line by line.
+The hooks are plain stdin/stdout JSON filters, so the tests run them end-to-end as subprocesses: the solo gate's threshold, its once-per-session deny, the spawn exemption and the fork non-exemption, every counted edit tool, teammate detection against a fake `ps`, the env overrides, malformed sidecars and garbage stdin, the per-prompt reminder and its skip, injection and the profile-switch delta, cache cleanup, and teammate reaping against a fake tmux.
 
-The hooks decide "chair or teammate?" by walking the real process tree, so the suite pins that ambient too — otherwise running the tests from inside a named teammate makes every chair-behaviour test fail for a reason unrelated to the code.
+A second layer pins the *content*: the cores stay under budget, both keep requiring the playbook, the decisions that survived past rewrites are asserted line by line, and the retired gates are asserted **absent** — a core that still promises a ledger or a mandatory verifier is a worse lie than never having had one.
 
 ## Honest limitations
 
-- Hooks check ledger **existence and checkbox state**, not fidelity — a shallow ledger passes; writing a faithful one stays a judgment task.
-- Freshness is only half-checked: a fully-closed ledger from a previous session re-arms the gates, but a stale ledger with OPEN items still satisfies them (it looks like active work).
-- Marking `- [x]` without actually verifying is possible; mechanizing further would invite ritual compliance.
-- Chair detection knows two chairs: Fable (primary) and Opus (limit fallback). Any other session model gets the Fable profile, and the 1500-char spawn gate applies everywhere. A mid-session `/model` switch only re-profiles at the next session start — `FABLE_ORCH_PROFILE=opus` pins it immediately for the next fires.
-- Enforcement is only as strong as the host's hook pipeline — on at least one experimental spawn backend we observed an async `Agent` launch proceed despite the guard's deny; verify once on your setup.
-- Pane idleness is a CPU-rate heuristic: a teammate parked below ~1% CPU for the idle window is reaped, so one blocked for hours inside a single quiet external wait (a long remote build) can be killed mid-wait — raise `FABLE_ORCH_TEAMMATE_IDLE_H`, lower `FABLE_ORCH_TEAMMATE_IDLE_RATE`, or disable with `FABLE_ORCH_TEAMMATE_IDLE_H=0` for such workloads. A reaped teammate can no longer be resumed with SendMessage.
-- The task guard counts tracker tasks, not work size: a solo multi-phase session that never creates tasks still slips through, and the deny is a single nudge per session, not a wall.
-- The orchestration discipline itself is prompt-level; the hooks fence exactly three failure points — the ones that get skipped the most.
-
-## Why these guards
-
-Details die *entering* the workflow (task→plan translation, fenced by the spawn guard) and *leaving* it (closing with silently unaddressed items, fenced by the close guard). The third measured failure is the workflow never starting at all: the chair quietly implementing a multi-phase plan solo on the most expensive model (fenced by the task guard). Everything between is judgment — and judgment belongs to the model, not to a regex.
+- **The solo gate counts edits, not work.** A chair that does everything through `Bash` heredocs never trips it. The per-prompt reminder is the only thing covering that path.
+- **It fires once.** By design — but a determined chair can absorb the nudge and carry on solo, and nothing stops it.
+- **Hooks check shape, not fidelity.** A worker spawned to satisfy the gate, then ignored, passes.
+- **Two chairs only.** Fable (primary) and Opus (fallback). Any other model gets the Fable profile.
+- **Enforcement is only as strong as the host's hook pipeline.** On one experimental spawn backend an async `Agent` launch proceeded despite a deny. Verify once on your setup.
+- **Pane idleness is a heuristic.** A teammate blocked for hours in one quiet external wait can be reaped mid-wait. Raise `FABLE_ORCH_TEAMMATE_IDLE_H` or disable it for such workloads.
+- **A plugin's hooks load at CLI start.** Install it and keep working in the same window and nothing happens — not a bug, but it looks exactly like one.
 
 ## License
 

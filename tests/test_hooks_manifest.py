@@ -13,7 +13,8 @@ def _manifest():
 
 
 def test_all_four_events_registered():
-    assert set(_manifest()) == {"SessionStart", "PreToolUse", "Stop", "SessionEnd"}
+    assert set(_manifest()) == {"SessionStart", "UserPromptSubmit",
+                                "PreToolUse", "SessionEnd"}
 
 
 def test_every_hook_command_script_exists():
@@ -28,9 +29,12 @@ def test_every_hook_command_script_exists():
 
 
 def test_pretooluse_matcher_covers_the_gated_tools():
+    # Both halves matter: the edit tools are what the gate COUNTS, and
+    # the spawn tools are what disarms it. A matcher that drops Agent
+    # would leave the gate denying a chair that is already delegating.
     matcher = _manifest()["PreToolUse"][0]["matcher"]
     pattern = re.compile(matcher)
-    for tool in ("Agent", "Task", "Workflow", "TaskCreate"):
+    for tool in ("Agent", "Task", "Edit", "Write", "MultiEdit", "NotebookEdit"):
         assert pattern.search(tool), f"matcher misses {tool}"
-    for tool in ("TaskUpdate", "TaskList", "AgentOutput", "WorkflowX"):
+    for tool in ("TaskUpdate", "TaskList", "AgentOutput", "EditX", "Read"):
         assert not pattern.search(tool), f"matcher over-matches {tool}"

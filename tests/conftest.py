@@ -15,16 +15,15 @@ SCRIPTS = REPO / "scripts"
 
 # Env vars that would leak the host's configuration into the tests.
 STRIP_ENV = [
-    "LEDGER_GUARD_THRESHOLD",
-    "LEDGER_GUARD_TASKS",
-    "LEDGER_GUARD_STOP_MODE",
+    "FABLE_ORCH_SOLO_EDITS",
+    "FABLE_ORCH_SOLO_GUARD",
+    "FABLE_ORCH_REMIND",
     "FABLE_ORCH_METRICS",
     "FABLE_ORCH_SWARM_CLEANUP",
     "FABLE_ORCH_SWARM_MAX_IDLE_H",
     "FABLE_ORCH_TEAMMATE_IDLE_H",
     "FABLE_ORCH_TEAMMATE_IDLE_RATE",
     "FABLE_ORCH_PROFILE",
-    "FABLE_ORCH_TEAMMATE_STOP",
     "FABLE_ORCH_TEAMMATE_INJECT",
     "CLAUDE_CONFIG_DIR",
     "TMUX_TMPDIR",
@@ -127,15 +126,3 @@ def run_hook(script, payload=None, raw=None, env_extra=None, tmpdir=None):
     return json.loads(out) if out else None
 
 
-@pytest.fixture
-def repo_dir(tmp_path):
-    """A fake repo root: the upward ledger search stops at .git."""
-    (tmp_path / ".git").mkdir()
-    return tmp_path
-
-
-def write_ledger(root, body="- [ ] 1. item\n"):
-    d = root / ".workflow"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "LEDGER.md").write_text(body, encoding="utf-8")
-    return d / "LEDGER.md"

@@ -71,8 +71,8 @@ def test_playbook_skill_exists_and_stays_bounded():
 def test_cores_require_the_playbook_before_first_delegation():
     # The linchpin of progressive disclosure: the core only summarizes,
     # so a core that stops REQUIRING the playbook silently ships a chair
-    # missing the research pipeline, output contract, fork cap, and
-    # verification procedure. The literal is plugin-name-namespaced —
+    # missing the research pipeline, report contract, fork cap, and
+    # teammate lifecycle. The literal is plugin-name-namespaced —
     # pinned against plugin.json below so a rename can't orphan it.
     plugin_name = json.loads(
         (REPO / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["name"]
@@ -96,23 +96,43 @@ def test_profiles_name_substantive_workers():
 
 
 def test_preserved_decisions_survive_the_diet():
-    # v0.15.0 cut ~60% of both cores. These are user decisions, not
-    # prose — a trim that drops one is a regression, not a diet.
+    # Successive diets cut ~65% of both cores. These are user
+    # decisions, not prose — a trim that drops one is a regression.
     for name in CORES:
         text = _flat(_instr(name))
         assert "no haiku" in text, f"{name}: haiku ban dropped"
         assert "fork (≤2/session" in text, f"{name}: fork cap dropped"
-        assert "EVERY close gets a FRESH" in text, f"{name}: fresh-eyes-every-close dropped"
-        assert "./.workflow/LEDGER*.md" in text, f"{name}: ledger path dropped"
-        # v0.15.0 additions: the report diet and the batching rule.
         assert "≤40 lines" in text, f"{name}: report line cap dropped"
         assert "five greps is one agent" in text, f"{name}: batching rule dropped"
-        # v0.15.1: clauses the diet dropped while the hooks kept enforcing them.
-        assert "Forks are exempt" in text, f"{name}: fork exemption dropped"
-        assert "IS the violation" in text, f"{name}: tracker-task anti-gaming clause dropped"
         assert "`Workflow` TOOL only on explicit" in text, f"{name}: Workflow gate note dropped"
     assert "reruns UNCHANGED on sonnet" in _flat(_instr("dynamic-workflow-opus.md")), \
         "opus: decline rerun tier undefined at the ceiling"
+
+
+def test_delegation_is_the_default_not_the_escalation():
+    # v0.16.0's whole point. Five consecutive sessions received the
+    # v0.15 profile and spawned zero workers: the old Rule 0 read
+    # "orchestrate WHEN the work is bulky", which every chair answered
+    # with "this one isn't". The default is inverted now, and a diet
+    # that softens it back to a condition is the regression.
+    for name in CORES:
+        text = _flat(_instr(name))
+        assert "delegate by DEFAULT" in text, f"{name}: default delegation dropped"
+        assert "Delegation is the normal path, not the escalation" in text, name
+        assert "the 3rd in a session that has spawned nothing" in text, \
+            f"{name}: the chair is not told what the solo gate does"
+
+
+def test_the_retired_gates_are_gone_from_the_cores():
+    # The ledger, the clarify loop and mandatory fresh-eyes
+    # verification were removed in v0.16.0 (user decision). A core that
+    # still names them promises the chair a mechanism that no longer
+    # exists — worse than never having had it.
+    for name in CORES + SWITCHES:
+        text = _flat(_instr(name))
+        for gone in ("LEDGER", "ledger", "Clarified", "fresh-eyes",
+                     "verification passed"):
+            assert gone not in text, f"{name}: retired gate still named ({gone})"
     book = _flat(_playbook())
     assert "at most 2 per session" in book          # fork cap, in full
     assert "at most 40 lines TOTAL" in book         # report diet, in full
@@ -723,16 +743,14 @@ def test_cleanup_removes_cache(tmp_path):
     assert not cache.exists()
 
 
-def test_cleanup_removes_stop_sidecar_and_sweeps_old(tmp_path):
+def test_cleanup_removes_sidecars_and_sweeps_old(tmp_path):
     import os
     import time
 
     cache = tmp_path / "fable-orch-model-s-clean.json"
     cache.write_text("{}", encoding="utf-8")
-    sidecar = tmp_path / "fable-orch-stop-s-clean.json"
-    sidecar.write_text("{}", encoding="utf-8")
-    tasks = tmp_path / "fable-orch-tasks-s-clean.json"
-    tasks.write_text('{"count": 2}', encoding="utf-8")
+    solo = tmp_path / "fable-orch-solo-s-clean.json"
+    solo.write_text('{"edits": 2, "spawns": 0}', encoding="utf-8")
     stale = tmp_path / "fable-orch-model-dead-session.json"
     stale.write_text("{}", encoding="utf-8")
     old = time.time() - 120 * 3600  # past the 96h sweep window
@@ -742,8 +760,7 @@ def test_cleanup_removes_stop_sidecar_and_sweeps_old(tmp_path):
 
     assert run_hook(CLEANUP, {"session_id": "s-clean"}, tmpdir=tmp_path) is None
     assert not cache.exists()
-    assert not sidecar.exists()
-    assert not tasks.exists()  # the task-gate counter dies with the session
+    assert not solo.exists()   # the solo-gate counter dies with the session
     assert not stale.exists()  # older than the 96h sweep window
     assert fresh.exists()      # other live sessions' files stay
 

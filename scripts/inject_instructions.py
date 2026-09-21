@@ -60,48 +60,28 @@ profile is written for the chair alone: injected into a worker it says
 "you are the ORCHESTRATOR" and invites it to spawn subagents, inverting
 the very discipline the plugin enforces (measured in the wild: 172 of
 270 injected sessions were teammates). Detection is the same ancestor
-walk the stop guard uses (`--agent-id` on the nearest claude ancestor);
-the session marker is still written so the other guards keep working.
+walk the solo guard uses (`--agent-id` on the nearest claude ancestor);
+the session marker is still written so the other hooks keep working.
 FABLE_ORCH_TEAMMATE_INJECT=1 restores the old inject-everyone
 behaviour.
 
-The hook also maintains the per-session marker the Stop and SessionEnd
-hooks rely on: its immutable `started` timestamp survives the re-runs
-SessionStart gets on resume/clear/compact, and the stop guard compares
-ledger mtimes against it to decide ownership.
+The hook also maintains the per-session marker the other hooks rely
+on: its immutable `started` timestamp survives the re-runs SessionStart
+gets on resume/clear/compact, and the SessionEnd sweep keys off it.
 """
 import json
 import os
 import re
-import subprocess
 import sys
-import tempfile
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _shared import is_teammate_session, metric, tmp_json  # noqa: E402
 
 
 def session_model_cache_path(session_id):
-    """Per-session marker file the stop/cleanup hooks read. None if no id."""
-    if not session_id:
-        return None
-    safe = "".join(c for c in str(session_id) if c.isalnum() or c in "-_")
-    return os.path.join(tempfile.gettempdir(), f"fable-orch-model-{safe}.json")
-
-
-def _metric(event, session_id=None, **extra):
-    """Append one event line to ~/.claude/fable-orch/metrics.jsonl (best effort)."""
-    if (os.environ.get("FABLE_ORCH_METRICS") or "").strip() == "0":
-        return
-    try:
-        d = os.path.join(os.path.expanduser("~"), ".claude", "fable-orch")
-        os.makedirs(d, exist_ok=True)
-        rec = {"ts": round(time.time(), 3), "event": event}
-        if session_id:
-            rec["session"] = str(session_id)[:8]
-        rec.update(extra)
-        with open(os.path.join(d, "metrics.jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps(rec) + "\n")
-    except Exception:
-        pass
+    """Per-session marker file the other hooks read. None if no id."""
+    return tmp_json("fable-orch-model", session_id)
 
 
 def _is_opus(value):
@@ -154,61 +134,6 @@ def _read_marker(cache):
     return None, None, None
 
 
-TEAMMATE_DETECT_BUDGET = 1.5  # seconds; the walk measures ~5ms in practice
-
-
-def _budget(deadline, cap=5.0):
-    """Seconds a subprocess may run without overshooting the deadline.
-
-    Monotonic, exactly as in the stop guard: a wall clock can step
-    backwards (NTP, a manual change) and would then hand back a budget
-    that never expires, defeating the bound entirely."""
-    if deadline is None:
-        return cap
-    return max(0.2, min(cap, deadline - time.monotonic()))
-
-
-def _is_teammate_session(max_hops=12):
-    """True when this hook is running inside a named teammate.
-
-    Teammates are launched with `--agent-id`. The profile belongs to the
-    CHAIR: a worker that receives it is told it is the orchestrator and
-    may spawn subagents liberally — the inverse of its actual job. Walks
-    up to the first claude ancestor and answers from its argv; same
-    logic as the stop guard's copy, kept verbatim so a future common
-    module can unify them.
-
-    HARD-BUDGETED because SessionStart must never hang a session open:
-    on budget exhaustion the answer is False — "assume chair", so the
-    profile is still delivered. That failure costs one teammate carrying
-    the profile (the pre-fix behaviour for every teammate); the opposite
-    default would strip the chair of its orchestration instructions.
-    """
-    deadline = time.monotonic() + TEAMMATE_DETECT_BUDGET
-    pid = os.getpid()
-    for _ in range(max_hops):
-        if time.monotonic() > deadline:
-            return False
-        try:
-            out = subprocess.run(
-                ["ps", "-o", "ppid=,command=", "-p", str(pid)],
-                capture_output=True, text=True, timeout=_budget(deadline),
-            ).stdout.strip()
-            bits = (out.splitlines()[0] if out else "").split(None, 1)
-            ppid = int(bits[0])
-        except Exception:
-            return False
-        command = bits[1] if len(bits) > 1 else ""
-        for tok in command.split():
-            base = os.path.basename(tok.strip("\"'"))
-            if base == "claude" or "claude-code" in tok or base.startswith("2."):
-                return "--agent-id" in command
-        if ppid <= 1:
-            return False
-        pid = ppid
-    return False
-
-
 def resolve_profile(payload_model, configured_model, marker_model):
     """Return (profile, source) — 'opus'|'fable' and which signal decided.
     Priority: env override > payload model > settings default > marker."""
@@ -249,7 +174,7 @@ def main():
     # GATED TO `resume`, the only fire that provably keeps the core in
     # context. `compact` re-fires BECAUSE the context was rewritten and
     # `clear` because it was discarded — a delta on either can leave the
-    # chair with no threshold, no ledger rule and no routing, silently.
+    # chair with no threshold, no spawn discipline and no routing.
     # Any unrecognised future source takes the same safe side: an
     # unproven source gets the full core. Wrong-delta costs a ruleless
     # chair; wrong-full-core costs ~3.7k chars.
@@ -270,7 +195,7 @@ def main():
     # the worker WOULD have received.
     teammate = False
     if (os.environ.get("FABLE_ORCH_TEAMMATE_INJECT") or "").strip() != "1":
-        teammate = _is_teammate_session()
+        teammate = is_teammate_session()
 
     text = None
     if not teammate:
@@ -287,8 +212,8 @@ def main():
     # Session marker for the guards (best effort; never fatal).
     # `started` marks the session's FIRST start and must survive the
     # re-runs SessionStart gets on resume/clear/compact — the stop guard
-    # compares ledger mtimes against it to decide ownership, so it can
-    # never move forward. `model` keeps the last NON-EMPTY model seen, so
+    # the sweep and the solo guard key off it, so it can never move
+    # forward. `model` keeps the last NON-EMPTY model seen, so
     # a later null-payload fire stays sticky instead of forgetting the
     # chair.
     try:
@@ -299,7 +224,7 @@ def main():
             except (TypeError, ValueError):
                 # Marker from an older version (no `started`) or corrupt:
                 # fall back to the file's mtime — NEVER to "now", which
-                # would disown every ledger touched before this re-run.
+                # would disown state written before this re-run.
                 try:
                     started = os.path.getmtime(cache)
                 except OSError:
@@ -335,8 +260,8 @@ def main():
         pass
 
     if teammate:
-        _metric("inject_skipped", session_id, model=model, profile=profile,
-                source=source, reason="teammate")
+        metric("inject_skipped", session_id, model=model, profile=profile,
+               source=source, reason="teammate")
         return
     if text is None:
         return  # never break session start
@@ -345,18 +270,18 @@ def main():
         # Distinct event, not a field on `inject`: an inject counts a
         # delivery of the discipline, a switch counts a chair that moved
         # tiers mid-session and received only the delta.
-        _metric("inject_switch", session_id, model=model, profile=profile,
-                source=source, from_profile=prev_profile, fire=fire)
+        metric("inject_switch", session_id, model=model, profile=profile,
+               source=source, from_profile=prev_profile, fire=fire)
     elif prev_profile and prev_profile != profile:
         # A profile change the gate turned into a full core. Still a
         # plain `inject`, but `from_profile` + `fire` record WHICH
         # SessionStart kinds real fallback re-fires arrive on — the data
         # a decision to widen the delta gate has to rest on.
-        _metric("inject", session_id, model=model, profile=profile,
-                source=source, from_profile=prev_profile, fire=fire)
+        metric("inject", session_id, model=model, profile=profile,
+               source=source, from_profile=prev_profile, fire=fire)
     else:
-        _metric("inject", session_id, model=model, profile=profile,
-                source=source)
+        metric("inject", session_id, model=model, profile=profile,
+               source=source)
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",

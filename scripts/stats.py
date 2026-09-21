@@ -36,7 +36,6 @@ def main():
     per_day = defaultdict(Counter)
     events = Counter()
     profiles = Counter()
-    ledgers = Counter()
     swarm_reaped = 0
     panes_reaped = 0
     gated_changes = Counter()  # profile changes delivered as a full core, by fire
@@ -54,8 +53,6 @@ def main():
             profiles[rec.get("profile") or rec.get("model") or "?"] += 1
             if rec.get("from_profile"):
                 gated_changes[str(rec.get("fire") or "?")] += 1
-        if event == "stop_block":
-            ledgers[rec.get("ledger") or "?"] += 1
         if event == "cleanup":
             try:
                 swarm_reaped += int(rec.get("swarm_own") or 0)
@@ -83,16 +80,11 @@ def main():
         for name, count in profiles.most_common():
             print(f"{name:8} {count}")
 
-    denies = events.get("spawn_deny", 0)
-    passes = events.get("spawn_pass_over_threshold", 0)
-    if denies or passes:
-        print(f"\nover-threshold spawns: {passes} passed with a ledger, {denies} denied")
-
-    tdenies = events.get("tasks_deny", 0)
-    tsupp = events.get("tasks_suppressed", 0)
-    if tdenies or tsupp:
-        print(f"\nsolo multi-phase nudges: {tdenies} denied, "
-              f"{tsupp} further ledgerless tasks after the reminder")
+    sdenies = events.get("solo_deny", 0)
+    ssupp = events.get("solo_suppressed", 0)
+    if sdenies or ssupp:
+        print(f"\nsolo-chair nudges: {sdenies} sessions denied an edit, "
+              f"{ssupp} further solo edits after the nudge")
 
     switches = events.get("inject_switch", 0)
     if switches or gated_changes:
@@ -110,11 +102,6 @@ def main():
         print(f"\ntmux teammate servers reaped: {swarm_reaped}")
     if panes_reaped:
         print(f"idle teammate panes reaped: {panes_reaped}")
-
-    if ledgers:
-        print("\n== stop blocks by ledger ==")
-        for name, count in ledgers.most_common(5):
-            print(f"{count:5}  {name}")
 
 
 if __name__ == "__main__":

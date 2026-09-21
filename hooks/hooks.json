@@ -12,27 +12,27 @@
         ]
       }
     ],
-    "PreToolUse": [
+    "UserPromptSubmit": [
       {
-        "matcher": "^(Agent|Task|Workflow|TaskCreate)$",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/ledger_guard_spawn.py\"",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/remind_chair.py\"",
             "timeout": 10,
-            "statusMessage": "Ledger guard (spawn/tasks)"
+            "statusMessage": "Orchestrator reminder"
           }
         ]
       }
     ],
-    "Stop": [
+    "PreToolUse": [
       {
+        "matcher": "^(Agent|Task|Edit|Write|MultiEdit|NotebookEdit)$",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/ledger_guard_stop.py\"",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/solo_guard.py\"",
             "timeout": 10,
-            "statusMessage": "Ledger guard (close)"
+            "statusMessage": "Solo guard"
           }
         ]
       }
