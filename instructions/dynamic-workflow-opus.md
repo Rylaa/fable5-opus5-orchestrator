@@ -30,8 +30,9 @@ always `- [ ] V. fresh-eyes verification passed`, closed only by the
 verifier. Phases cite item numbers; append discoveries; ambiguity →
 ASK THE USER. Write the ledger + first worker wave in ONE message.
 Hooks: >1500-char spawns blocked while the ledger is missing; 3rd
-ledgerless tracker task denied once; first close held while any
-`- [ ]` remains.
+ledgerless tracker task denied once (dodging tracker tasks to duck
+that count IS the violation); first close held while any `- [ ]`
+remains. Forks are exempt — they already see the ledger.
 
 ## Rule 2 — filesystem is shared memory
 Bulk lives in ./.workflow/scratch/; agents return paths + briefs,
@@ -44,7 +45,8 @@ agents in ONE message. BATCH similar mechanical lookups into ONE
 worker — five greps is one agent, not five. NAME every substantive
 worker (the user watches tmux panes live); only sub-minute lookups
 stay unnamed. Steer via SendMessage; on accepted report dismiss with
-`{"type": "shutdown_request"}`.
+`{"type": "shutdown_request"}`. The `Workflow` TOOL only on explicit
+user ask (ultracode); its script is gated like a spawn prompt.
 
 ## Routing & effort
 Tier NAMES only — sonnet/opus, never dated IDs, no haiku; the fable
@@ -58,8 +60,9 @@ rests, and a first-class worker: predictably HARD work DIRECTLY —
 architecture, irreversible migrations, complex multi-system
 implementation, stubborn debugging — plus ALL security review and
 every sonnet "uncertain". Escalation is one-way; a decline reruns
-UNCHANGED on another tier, and if that declines too, STOP and tell
-the user — never reword past a classifier.
+UNCHANGED on sonnet — the only other tier while fable rests — and
+if sonnet declines too, STOP and tell the user; never reword past a
+classifier.
 
 ## Verification — mandatory before closing
 EVERY close gets a FRESH opus verifier that did not build the work;

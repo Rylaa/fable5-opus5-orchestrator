@@ -1,7 +1,7 @@
 import json
 import os
 
-from conftest import REPO, run_hook
+from conftest import REPO, fake_ps_env, run_hook
 
 INJECT = "inject_instructions.py"
 CLEANUP = "cleanup_session_cache.py"
@@ -107,6 +107,12 @@ def test_preserved_decisions_survive_the_diet():
         # v0.15.0 additions: the report diet and the batching rule.
         assert "≤40 lines" in text, f"{name}: report line cap dropped"
         assert "five greps is one agent" in text, f"{name}: batching rule dropped"
+        # v0.15.1: clauses the diet dropped while the hooks kept enforcing them.
+        assert "Forks are exempt" in text, f"{name}: fork exemption dropped"
+        assert "IS the violation" in text, f"{name}: tracker-task anti-gaming clause dropped"
+        assert "`Workflow` TOOL only on explicit" in text, f"{name}: Workflow gate note dropped"
+    assert "reruns UNCHANGED on sonnet" in _flat(_instr("dynamic-workflow-opus.md")), \
+        "opus: decline rerun tier undefined at the ceiling"
     book = _flat(_playbook())
     assert "at most 2 per session" in book          # fork cap, in full
     assert "at most 40 lines TOTAL" in book         # report diet, in full
@@ -416,8 +422,9 @@ def test_switch_metric_is_distinguishable(tmp_path):
     rec = json.loads(lines[1])
     assert rec["event"] == "inject_switch"                # its own event
     assert rec["profile"] == "opus" and rec["from_profile"] == "fable"
-    # `fire` survives the gate: it is how we learn which sources real
-    # fallback re-fires actually arrive on, before widening the gate.
+    # A delta only ever ships on `resume`, so `fire` here is always
+    # "resume"; the data on OTHER fires lives on the gated `inject`
+    # records below (from_profile + fire).
     assert rec["fire"] == "resume"
 
 
@@ -434,6 +441,95 @@ def test_gated_full_core_is_not_counted_as_a_switch(tmp_path):
     lines = (home / ".claude" / "fable-orch" / "metrics.jsonl").read_text(
         encoding="utf-8").strip().splitlines()
     assert [json.loads(l)["event"] for l in lines] == ["inject", "inject"]
+    # ...but the change is still RECORDED, on the inject event itself:
+    # which fires real fallback re-fires arrive on is the only data a
+    # decision to widen the delta gate can rest on.
+    rec = json.loads(lines[1])
+    assert rec["from_profile"] == "fable" and rec["fire"] == "compact"
+    assert "from_profile" not in json.loads(lines[0])
+
+
+def test_settings_sourced_profile_never_produces_a_delta(tmp_path):
+    # The settings default is GLOBAL: `/model opus` in an unrelated
+    # session moves it. A Fable chair resuming with a null payload must
+    # not be told "your limit is spent, do not spawn fable" on that
+    # evidence — only the payload model and the env pin describe THIS
+    # session's chair.
+    _inject(tmp_path, {"model": "claude-fable-5", "session_id": "s-sw-set"})
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    (cfg / "settings.json").write_text(json.dumps({"model": "claude-opus-5"}),
+                                       encoding="utf-8")
+    text = context_of(_inject(tmp_path, {"session_id": "s-sw-set",
+                                         "source": "resume"}))
+    assert "Profile switch" not in text
+    assert "(OPUS profile)" in text            # full core, as any null-payload fire
+    # A later AUTHORITATIVE signal still switches from what was told.
+    text = context_of(_inject(tmp_path, {"model": "claude-fable-5",
+                                         "session_id": "s-sw-set",
+                                         "source": "resume"}))
+    assert "Profile switch → FABLE chair" in text
+
+
+def test_env_override_is_authoritative_for_the_delta(tmp_path):
+    _inject(tmp_path, {"model": "claude-fable-5", "session_id": "s-sw-env"})
+    text = context_of(_inject(tmp_path, {"session_id": "s-sw-env",
+                                         "source": "resume"},
+                              FABLE_ORCH_PROFILE="opus"))
+    assert "Profile switch → OPUS chair" in text
+
+
+def test_teammate_skip_on_a_context_wiping_fire_clears_the_recorded_profile(tmp_path):
+    # startup: chair, fable core, marker profile=fable. compact: the
+    # walk says teammate (a chair launched from inside a worker's shell
+    # sees --agent-id upstream), nothing injected — and the compacted
+    # context no longer carries the core. resume with opus must then
+    # get the FULL core, never a bare delta on top of nothing.
+    _inject(tmp_path, {"model": "claude-fable-5", "session_id": "s-tm-wipe"})
+    assert _marker(tmp_path, "s-tm-wipe")["profile"] == "fable"
+    env = fake_ps_env(tmp_path, "1 claude --agent-id w@s --agent-name w")
+    assert run_hook(INJECT, {"model": "claude-fable-5", "session_id": "s-tm-wipe",
+                             "source": "compact"},
+                    env_extra=env, tmpdir=tmp_path) is None
+    assert _marker(tmp_path, "s-tm-wipe")["profile"] is None
+    text = context_of(_inject(tmp_path, {"model": "claude-opus-5",
+                                         "session_id": "s-tm-wipe",
+                                         "source": "resume"}))
+    assert "Profile switch" not in text
+    assert "(OPUS profile)" in text
+
+
+def test_unreadable_instructions_on_a_context_wiping_fire_clears_the_recorded_profile(tmp_path):
+    # Same hole via the other "nothing delivered" path: the instructions
+    # file cannot be read on a compact fire. The marker must still be
+    # written (the guards key off it) with the profile cleared.
+    _inject(tmp_path, {"model": "claude-fable-5", "session_id": "s-unread"})
+    broken = tmp_path / "broken-root"
+    broken.mkdir()
+    assert run_hook(INJECT, {"model": "claude-fable-5", "session_id": "s-unread",
+                             "source": "compact"},
+                    env_extra={"CLAUDE_PLUGIN_ROOT": str(broken)},
+                    tmpdir=tmp_path) is None
+    data = _marker(tmp_path, "s-unread")
+    assert data["profile"] is None and data["started"] > 0
+    text = context_of(_inject(tmp_path, {"model": "claude-opus-5",
+                                         "session_id": "s-unread",
+                                         "source": "resume"}))
+    assert "Profile switch" not in text and "(OPUS profile)" in text
+
+
+def test_nothing_delivered_on_resume_keeps_the_recorded_profile(tmp_path):
+    # On `resume` the earlier core is provably still in context, so a
+    # teammate-skipped resume carries the record forward (unchanged
+    # v0.14 behaviour) and the next real switch is still a delta.
+    _inject(tmp_path, {"model": "claude-fable-5", "session_id": "s-tm-keep"})
+    env = fake_ps_env(tmp_path, "1 claude --agent-id w@s --agent-name w")
+    run_hook(INJECT, {"model": "claude-fable-5", "session_id": "s-tm-keep",
+                      "source": "resume"}, env_extra=env, tmpdir=tmp_path)
+    assert _marker(tmp_path, "s-tm-keep")["profile"] == "fable"
+    assert "Profile switch → OPUS chair" in context_of(
+        _inject(tmp_path, {"model": "claude-opus-5", "session_id": "s-tm-keep",
+                           "source": "resume"}))
 
 
 def test_teammate_is_skipped_even_when_the_profile_switched(tmp_path):
@@ -443,7 +539,7 @@ def test_teammate_is_skipped_even_when_the_profile_switched(tmp_path):
     cache = tmp_path / "fable-orch-model-s-tm-sw.json"
     cache.write_text(json.dumps({"model": "claude-fable-5", "started": 123.0,
                                  "profile": "fable"}), encoding="utf-8")
-    env = _fake_ps_env(
+    env = fake_ps_env(
         tmp_path, "1 claude --agent-id worker@session-t --agent-name worker")
     assert run_hook(INJECT, {"model": "claude-opus-5", "session_id": "s-tm-sw",
                              "source": "resume"},
@@ -509,6 +605,8 @@ def test_stats_reads_the_switch_event_without_crashing(tmp_path):
         json.dumps({"ts": 2.0, "event": "inject_switch", "profile": "opus",
                     "from_profile": "fable", "fire": "compact"}),
         json.dumps({"ts": 3.0, "event": "inject_skipped", "reason": "teammate"}),
+        json.dumps({"ts": 4.0, "event": "inject", "profile": "opus",
+                    "from_profile": "fable", "fire": "compact"}),   # gated change
         "{not json",
     ]) + "\n", encoding="utf-8")
     proc = subprocess.run([sys.executable, str(REPO / "scripts" / "stats.py"),
@@ -518,6 +616,7 @@ def test_stats_reads_the_switch_event_without_crashing(tmp_path):
     # totals table prints every event kind verbatim, so asserting
     # "inject_switch" passes even with the summary deleted.
     assert "mid-session profile switches: 1" in proc.stdout
+    assert "profile changes delivered as a full core, by fire: compact=1" in proc.stdout
 
 
 def test_metrics_optout(tmp_path):
@@ -551,26 +650,13 @@ def test_inject_preserves_started_across_reruns(tmp_path):
     assert json.loads(cache.read_text(encoding="utf-8"))["started"] == 123.0
 
 
-def _fake_ps_env(tmp_path, argv_line):
-    """A fake `ps` on PATH: its one output line is the ancestor walk's
-    first hop — the same fixture the stop guard's teammate tests use."""
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir(exist_ok=True)
-    ps = bin_dir / "ps"
-    ps.write_text(
-        "#!/usr/bin/env python3\nprint(%r)\n" % argv_line, encoding="utf-8")
-    os.chmod(ps, 0o755)
-    return {"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
-            "CLAUDE_PLUGIN_ROOT": str(REPO)}
-
-
 def test_teammate_session_gets_no_profile(tmp_path):
     # Teammates fire SessionStart like any session, but the profile is
     # chair-only: injected into a worker it says "you are the
     # ORCHESTRATOR" and invites it to spawn subagents of its own.
     # Measured before the fix: 172 of 270 injected sessions were
     # teammates.
-    env = _fake_ps_env(
+    env = fake_ps_env(
         tmp_path, "1 claude --agent-id worker@session-t --agent-name worker")
     result = run_hook(INJECT, {"model": "claude-sonnet-5", "session_id": "s-tm"},
                       env_extra=env, tmpdir=tmp_path)
@@ -584,7 +670,7 @@ def test_teammate_session_gets_no_profile(tmp_path):
 def test_teammate_skip_records_metric(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
-    env = _fake_ps_env(tmp_path, "1 claude --agent-id w@s --agent-name w")
+    env = fake_ps_env(tmp_path, "1 claude --agent-id w@s --agent-name w")
     env.update({"HOME": str(home), "FABLE_ORCH_METRICS": "1"})
     run_hook(INJECT, {"model": "claude-sonnet-5", "session_id": "s-tm-m"},
              env_extra=env, tmpdir=tmp_path)
@@ -601,7 +687,7 @@ def test_teammate_skip_records_metric(tmp_path):
 def test_teammate_inject_escape_hatch(tmp_path):
     # FABLE_ORCH_TEAMMATE_INJECT=1 restores the old inject-everyone
     # behaviour, mirroring FABLE_ORCH_TEAMMATE_STOP on the close guard.
-    env = _fake_ps_env(tmp_path, "1 claude --agent-id w@s --agent-name w")
+    env = fake_ps_env(tmp_path, "1 claude --agent-id w@s --agent-name w")
     env["FABLE_ORCH_TEAMMATE_INJECT"] = "1"
     result = run_hook(INJECT, {"model": "claude-sonnet-5", "session_id": "s-tm-e"},
                       env_extra=env, tmpdir=tmp_path)
@@ -611,7 +697,7 @@ def test_teammate_inject_escape_hatch(tmp_path):
 def test_chair_still_injected_when_ancestor_is_plain_claude(tmp_path):
     # Same fake ps, no --agent-id: this is the chair and must keep
     # receiving the profile.
-    env = _fake_ps_env(tmp_path, "1 claude")
+    env = fake_ps_env(tmp_path, "1 claude")
     result = run_hook(INJECT, {"model": "claude-fable-5", "session_id": "s-chair"},
                       env_extra=env, tmpdir=tmp_path)
     assert "(FABLE profile)" in context_of(result)

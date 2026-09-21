@@ -1,6 +1,8 @@
+import atexit
 import functools
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -50,6 +52,10 @@ def _chair_ps_dir():
     reaches this shim.
     """
     bin_dir = Path(tempfile.mkdtemp(prefix="fable-orch-testshim-"))
+    # One shim per pytest process; without this every run leaks a dir
+    # (holding an executable `ps`) into the system temp dir for good —
+    # the plugin's own sweep only matches fable-orch-*.json.
+    atexit.register(shutil.rmtree, bin_dir, ignore_errors=True)
     ps = bin_dir / "ps"
     ps.write_text(
         "#!/usr/bin/env python3\n"
@@ -62,6 +68,21 @@ def _chair_ps_dir():
     )
     os.chmod(ps, 0o755)
     return str(bin_dir)
+
+
+def fake_ps_env(tmp_path, argv_line):
+    """A fake `ps` on PATH whose one output line is the ancestor walk's
+    first hop — THE fixture for every test that drives teammate
+    detection (injector and stop guard alike). `argv_line` is
+    `<ppid> <command>`, e.g. "1 claude --agent-id w@s"."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    ps = bin_dir / "ps"
+    ps.write_text(
+        "#!/usr/bin/env python3\nprint(%r)\n" % argv_line, encoding="utf-8")
+    os.chmod(ps, 0o755)
+    return {"PATH": str(bin_dir) + os.pathsep + os.environ.get("PATH", ""),
+            "CLAUDE_PLUGIN_ROOT": str(REPO)}
 
 
 def run_hook(script, payload=None, raw=None, env_extra=None, tmpdir=None):

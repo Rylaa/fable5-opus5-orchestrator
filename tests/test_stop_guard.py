@@ -2,7 +2,7 @@ import json
 import os
 import time
 
-from conftest import run_hook, write_ledger
+from conftest import fake_ps_env, run_hook, write_ledger
 
 SCRIPT = "ledger_guard_stop.py"
 
@@ -579,16 +579,8 @@ def test_teammate_close_is_never_held(repo_dir, tmp_path):
     # deliver — observed in the wild. Fake ps puts an --agent-id claude
     # in the ancestor chain.
     write_ledger(repo_dir, "- [ ] 1. open\n")
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    ps = bin_dir / "ps"
-    ps.write_text(
-        "#!/usr/bin/env python3\n"
-        "print('1 claude --agent-id worker@session-t --agent-name worker')\n",
-        encoding="utf-8",
-    )
-    os.chmod(ps, 0o755)
-    env = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+    env = fake_ps_env(
+        tmp_path, "1 claude --agent-id worker@session-t --agent-name worker")
     assert run_hook(SCRIPT, stop_payload(repo_dir), env_extra=env, tmpdir=tmp_path) is None
     # The escape hatch restores the old behaviour.
     env["FABLE_ORCH_TEAMMATE_STOP"] = "1"
@@ -599,13 +591,7 @@ def test_chair_close_still_held_when_ancestors_are_not_agents(repo_dir, tmp_path
     # Same fake ps, but the ancestor carries no --agent-id: this is the
     # chair, and its open ledger must still hold the close.
     write_ledger(repo_dir, "- [ ] 1. open\n")
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    ps = bin_dir / "ps"
-    ps.write_text(
-        "#!/usr/bin/env python3\nprint('1 claude')\n", encoding="utf-8")
-    os.chmod(ps, 0o755)
-    env = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+    env = fake_ps_env(tmp_path, "1 claude")
     assert blocks(run_hook(SCRIPT, stop_payload(repo_dir), env_extra=env, tmpdir=tmp_path))
 
 

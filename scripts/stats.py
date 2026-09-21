@@ -39,6 +39,7 @@ def main():
     ledgers = Counter()
     swarm_reaped = 0
     panes_reaped = 0
+    gated_changes = Counter()  # profile changes delivered as a full core, by fire
 
     for rec in records(path):
         event = rec.get("event") or "?"
@@ -51,6 +52,8 @@ def main():
         per_day[day][event] += 1
         if event == "inject":
             profiles[rec.get("profile") or rec.get("model") or "?"] += 1
+            if rec.get("from_profile"):
+                gated_changes[str(rec.get("fire") or "?")] += 1
         if event == "stop_block":
             ledgers[rec.get("ledger") or "?"] += 1
         if event == "cleanup":
@@ -92,12 +95,16 @@ def main():
               f"{tsupp} further ledgerless tasks after the reminder")
 
     switches = events.get("inject_switch", 0)
-    if switches:
-        # Deliberately NOT folded into the profile counter above: that
-        # one counts sessions, and a switch is the same session moving
-        # tiers mid-flight.
+    if switches or gated_changes:
+        # Kept apart from the profile counter above: that one counts
+        # inject EVENTS (one per SessionStart fire, so a session that
+        # resumes four times is four increments), and a switch is one
+        # chair moving tiers mid-flight and receiving only the delta.
         print(f"\nmid-session profile switches: {switches} "
               f"(short delta injected, not the full core)")
+    if gated_changes:
+        parts = ", ".join(f"{k}={v}" for k, v in sorted(gated_changes.items()))
+        print(f"profile changes delivered as a full core, by fire: {parts}")
 
     if swarm_reaped:
         print(f"\ntmux teammate servers reaped: {swarm_reaped}")
