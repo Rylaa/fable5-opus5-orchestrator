@@ -1,6 +1,6 @@
 {
   "name": "fable-orchestrator",
-  "description": "Fable 5-first multi-agent orchestration for Claude Code: a token-frugal chair profile with tier routing (Sonnet 5 carries the volume, Opus 5 the hard slices), chair-sized effort per worker, delegation as the default, and hooks that notice when the chair does the work itself instead.",
+  "description": "Fable 5-first multi-agent orchestration for Claude Code: a token-frugal chair profile with tier routing (Sonnet 5 carries the volume, Opus 5.5 the hard slices), chair-sized effort per worker, delegation as the default, and hooks that notice when the chair does the work itself instead.",
   "owner": {
     "name": "Yusuf Demirkoparan",
     "url": "https://github.com/Rylaa"

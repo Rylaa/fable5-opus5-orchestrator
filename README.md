@@ -6,7 +6,7 @@
 
 Fable 5 is the best chair a Claude Code session can have, and the most expensive seat in the house. Let it type every token itself and the session ends rate-limited, waiting out the reset window.
 
-This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends tokens on planning, arbitration and final decisions. Everything else goes to named workers: the volume — implementation, research, briefs, review, bulk reading — to **Sonnet 5**, and the predictably hard slices — architecture, irreversible migrations, security review — straight to **Opus 5**, which doubles as the escalation lane. The chair sizes each worker's reasoning effort to the job, `low` for mechanical sweeps, `max` for architecture and security.
+This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends tokens on planning, arbitration and final decisions. Everything else goes to named workers: the volume — implementation, research, briefs, review, bulk reading — to **Sonnet 5**, and the predictably hard slices — architecture, irreversible migrations, security review — straight to **Opus 5.5**, which doubles as the escalation lane. The chair sizes each worker's reasoning effort to the job, `low` for mechanical sweeps, `max` for architecture and security.
 
 **No ledger, no interview, no mandatory verification phase.** Earlier versions gated the act of delegating with a requirements file and a clarification loop. Both are gone. What is left is one rule with teeth: delegation is the default, and a hook notices when the chair quietly does the work itself.
 
@@ -24,7 +24,7 @@ This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends t
            ┌────────────────────────┬────┴───────────────────┬────────────────────────┐
            ▼                        ▼                        ▼                        ▼
 ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
-│ SONNET 5 · low–med  │  │ SONNET 5 · med–high │  │ SONNET 5 · med–high │  │  OPUS 5 · high–max  │
+│ SONNET 5 · low–med  │  │ SONNET 5 · med–high │  │ SONNET 5 · med–high │  │ OPUS 5.5 · high–max │
 │   mechanical bulk   │  │   implementation    │  │   routine judgment  │  │  hard work · direct │
 │   grep·fetch·scan   │  │   code · tests      │  │   briefs · review   │  │  architecture       │
 │   format · read     │  │   debug · refactor  │  │   filtering         │  │  migrations·security│
@@ -33,31 +33,31 @@ This plugin makes the split mechanical. **Fable 5 keeps the chair** and spends t
                                                              │ high stakes            │ opus
                                                           ┌──▼────────────────────────▼──┐
                                                           │   escalation · one way only  │
-                                                          │   OPUS 5 → FABLE 5 → stop    │
+                                                          │  OPUS 5.5 → FABLE 5 → stop   │
                                                           └──────────────────────────────┘
 ```
 
 Your Fable limit pays for the thinking and almost nothing else:
 
 ```
-┌─────────────────────────────────────────┬─────────────────┬─────────────────────┐
-│ Work                                    │ Runs on         │ Fable limit pays    │
-├─────────────────────────────────────────┼─────────────────┼─────────────────────┤
-│ Planning, arbitration, decisions         │ Fable 5 (chair) │ yes                 │
-│ Implementation, tests, refactors         │ Sonnet 5        │ nothing             │
-│ Source briefs, filtering, code review    │ Sonnet 5        │ nothing             │
-│ Bulk gathering (fetch, grep, scan)       │ Sonnet 5 (low)  │ nothing             │
-│ Hard slices: architecture, migrations    │ Opus 5 (direct) │ nothing             │
-│ Security / adversarial review            │ Opus 5 (max)    │ nothing             │
-│ Escalations (sonnet "uncertain")         │ Opus → Fable    │ mostly nothing      │
-└─────────────────────────────────────────┴─────────────────┴─────────────────────┘
+┌─────────────────────────────────────────┬───────────────────┬─────────────────────┐
+│ Work                                    │ Runs on           │ Fable limit pays    │
+├─────────────────────────────────────────┼───────────────────┼─────────────────────┤
+│ Planning, arbitration, decisions        │ Fable 5 (chair)   │ yes                 │
+│ Implementation, tests, refactors        │ Sonnet 5          │ nothing             │
+│ Source briefs, filtering, code review   │ Sonnet 5          │ nothing             │
+│ Bulk gathering (fetch, grep, scan)      │ Sonnet 5 (low)    │ nothing             │
+│ Hard slices: architecture, migrations   │ Opus 5.5 (direct) │ nothing             │
+│ Security / adversarial review           │ Opus 5.5 (max)    │ nothing             │
+│ Escalations (sonnet "uncertain")        │ Opus → Fable      │ mostly nothing      │
+└─────────────────────────────────────────┴───────────────────┴─────────────────────┘
 ```
 
 ## Why this trio
 
 - **Fable tokens are the heaviest draw on your limit.** Every token of bulk work kept off the chair extends how long Fable stays in it.
 - **Sonnet 5 carries the volume.** Near-Opus quality on coding and agentic work, with the full effort ladder (`low` → `max`) — and the chair dials that ladder per task.
-- **Opus 5 takes the hard slices directly.** Architecture tradeoffs, irreversible migrations, complex multi-system implementation and all security review are assigned straight to Opus, with no failed Sonnet pass required.
+- **Opus 5.5 takes the hard slices directly.** Architecture tradeoffs, irreversible migrations, complex multi-system implementation and all security review are assigned straight to Opus, with no failed Sonnet pass required.
 - **Escalation is one-way.** Sonnet returns "uncertain" and it goes to Opus, never back to the chair. If a tier declines a task it is re-run **unchanged** on another tier, never reworded to slip past a classifier. If that tier declines too, the chair stops and tells you.
 
 ## What the plugin does
