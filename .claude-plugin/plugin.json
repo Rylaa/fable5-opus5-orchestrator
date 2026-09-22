@@ -1,7 +1,7 @@
 {
   "name": "orchestrator",
   "description": "Token-frugal multi-agent orchestration for Claude Code, built for a Claude Fable 5 chair: Fable plans and decides, Sonnet 5 carries the volume, Opus 5.5 takes the hard slices and escalations, each worker's effort sized by the chair. Delegation is the DEFAULT, not the escalation \u2014 and a solo guard watches the chair itself: three of its own file edits in a session that has spawned no workers draws one deny. A substantial spawn with no name is denied once, so workers stay visible in tmux panes, and a per-prompt line keeps the default in front of a long session, and finished tmux teammates are reaped automatically. No ledger, no clarification interview, no mandatory verification phase.",
-  "version": "0.16.1",
+  "version": "0.16.2",
   "author": {
     "name": "Yusuf Demirkoparan",
     "url": "https://github.com/Rylaa"

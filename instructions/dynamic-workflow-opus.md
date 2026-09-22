@@ -46,9 +46,11 @@ ask (ultracode).
 
 ## Routing & effort
 Tier NAMES only — sonnet/opus, never dated IDs, no haiku; the fable
-tier is RESTING, its roles fall to opus. Effort per spawn: low=mechanical, medium=routine spec work,
+tier is RESTING, its roles fall to opus.
+Effort per spawn: low=mechanical, medium=routine spec work,
 high=multi-file impl/debug/review, xhigh=hardest agentic work,
-max=architecture/migrations/security/escalations; unsure → round UP.
+architecture/migrations/security/escalations; unsure → round UP.
+opus never runs above xhigh — no max on opus.
 sonnet carries the VOLUME: scan, fetch, mechanical edits, spec code,
 tests, briefs, standard review. opus takes predictably HARD work
 DIRECTLY — architecture, irreversible migrations, complex

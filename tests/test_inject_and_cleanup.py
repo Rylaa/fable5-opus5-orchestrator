@@ -114,6 +114,17 @@ def test_preserved_decisions_survive_the_diet():
         "opus: decline rerun tier undefined at the ceiling"
 
 
+def test_opus_effort_tops_out_at_xhigh():
+    # User decision (v0.16.2): Opus 5.5 never runs at max. Architecture,
+    # migrations, security and escalations — the old max row — run at
+    # xhigh; a profile that still maps them to max spends the limit on
+    # an effort level the user ruled out.
+    for name in CORES:
+        text = _flat(_instr(name))
+        assert "opus never runs above xhigh" in text, f"{name}: opus xhigh cap dropped"
+        assert "max=architecture" not in text, f"{name}: max row came back"
+
+
 def test_delegation_is_the_default_not_the_escalation():
     # v0.16.0's whole point. Five consecutive sessions received the
     # v0.15 profile and spawned zero workers: the old Rule 0 read
